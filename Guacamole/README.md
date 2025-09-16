@@ -12,7 +12,7 @@
 
 ## TUJUAN
 Membangun simulasi remote access kantor:
-- Akses remote desktop via web (RDP, SSH, VNC)
+- **Akses remote desktop via web (RDP, SSH, VNC)**
 - **Apache Guacamole + TOTP** untuk akses desktop/server via web
 - **TOTP + Google Authentifikator** sebagai lapisan keamanan kedua dalam proses autentikasi dua langkah (2FA)
 - **Tomcat** sebagai terminator SSL (opsional)
@@ -31,6 +31,7 @@ Membangun simulasi remote access kantor:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
 
 
 
