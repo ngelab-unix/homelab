@@ -8,11 +8,13 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 
 ## 🏗️ Topologi Jaringan
 
-| Komponen              | IP Address      | Deskripsi                  |
-|-----------------------|-----------------|-----------------------------|
-| **LXD Host**          | 192.168.1.xx    | Canonical LXD Hypervisor    |
-| **Apache Guacamole**  | 10.105.28.160   | Web-based Remote Access     |
-| **PC Remote Access**  | 10.105.28.170   | Client RDP/SSH/VNC          |
+| Komponen                          | IP Address      | Deskripsi                   |
+|-----------------------------------|-----------------|-----------------------------|
+| **LXD Host**                      | 192.168.1.xx    |  Canonical LXD Hypervisor   |
+| **Apache Guacamole**              | 10.105.28.160   | Web-based Remote Access     |
+| **PC Remote Access**              | 10.105.28.170   | Client RDP/SSH/VNC          |
+| **DNS guaca.ngelab-unix.biz.id**  | 10.105.28.160   | DNS guacamole               |
+
 
 📊 **Diagram Topologi**  
 ![Topologi Jaringan](/Image/ChatGPT%20Image%20Sep%2016%2C%202025%2C%2009_49_24%20AM.png)  
@@ -66,3 +68,4 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
