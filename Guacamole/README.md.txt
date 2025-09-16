@@ -3,10 +3,10 @@
 ## TUJUAN
 Membangun simulasi remote access kantor menggunakan:
 - **Apache Guacamole + TOTP** untuk akses desktop/server via web
-- **TOTP + Google Authentifikator** sebagai lapisan keamanan ketiga dalam proses autentikasi dua langkah (2FA)
+- **TOTP + Google Authentifikator** sebagai lapisan keamanan kedua dalam proses autentikasi dua langkah (2FA)
 - **Cloudflare Tunnel** untuk publikasi tanpa IP publik
 - **Cloudflared Zero Trust** untuk autentifikasi tambahan lapis pertama dengan TOTP ke email
-- **Domain** untuk mempermudah mengakses server via web
+- **Domain Exsternal** untuk mempermudah mengakses server via web
 - **Tomcat** sebagai terminator SSL (opsional)
 - **Canonical/LXD** untuk isolasi environment
 
@@ -31,3 +31,4 @@ Membangun simulasi remote access kantor menggunakan:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
