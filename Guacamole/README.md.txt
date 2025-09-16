@@ -11,7 +11,7 @@
 # Remote Office Access Lab with Apache Guacamole 
 
 ## TUJUAN
-Membangun simulasi remote access kantor menggunakan:
+Membangun simulasi remote access kantor:
 - Akses remote desktop via web (RDP, SSH, VNC)
 - **Apache Guacamole + TOTP** untuk akses desktop/server via web
 - **TOTP + Google Authentifikator** sebagai lapisan keamanan kedua dalam proses autentikasi dua langkah (2FA)
@@ -31,6 +31,7 @@ Membangun simulasi remote access kantor menggunakan:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
 
 
 
