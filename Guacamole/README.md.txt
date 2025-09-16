@@ -1,20 +1,12 @@
-# Remote Office Access Lab with Apache Guacamole + Cloudflare Tunnel + Domain
+# Remote Office Access Lab with Apache Guacamole 
 
 ## TUJUAN
 Membangun simulasi remote access kantor menggunakan:
+- Akses remote desktop via web (RDP, SSH, VNC)
 - **Apache Guacamole + TOTP** untuk akses desktop/server via web
 - **TOTP + Google Authentifikator** sebagai lapisan keamanan kedua dalam proses autentikasi dua langkah (2FA)
-- **Cloudflare Tunnel** untuk publikasi tanpa IP publik
-- **Cloudflared Zero Trust** untuk autentifikasi tambahan lapis pertama dengan TOTP ke email
-- **Domain Exsternal** untuk mempermudah mengakses server via web
 - **Tomcat** sebagai terminator SSL (opsional)
 - **Canonical/LXD** untuk isolasi environment
-
-## Fitur
-- Akses remote desktop via web (RDP, SSH, VNC)
-- Integrasi domain dengan Cloudflare
-- Integrasi Zero Trus Cloudflare
-- Akses aman tanpa IP publik
 
 ## 📊 Diagram Topologi
 ![Topologi Jaringan](guacamole_images/guaca_cloudflaredtopologi.png) 
@@ -31,4 +23,5 @@ Membangun simulasi remote access kantor menggunakan:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
 
