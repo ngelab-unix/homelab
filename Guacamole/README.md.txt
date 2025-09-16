@@ -1,6 +1,12 @@
 
 **TOPOLOGI JARINGAN**
 
+- **LXD CANONICAL**   : 192.168.1.xx 
+- **guacamole**       : 10.105.28.160
+- **PC Remote Acces** : 10.105.28.170
+
+## 📊 Diagram Topologi
+![Topologi Jaringan](guacamole_images/guaca_cloudflaredtopologi.png) 
 
 # Remote Office Access Lab with Apache Guacamole 
 
@@ -12,11 +18,9 @@ Membangun simulasi remote access kantor menggunakan:
 - **Tomcat** sebagai terminator SSL (opsional)
 - **Canonical/LXD** untuk isolasi environment
 
-## 📊 Diagram Topologi
-![Topologi Jaringan](guacamole_images/guaca_cloudflaredtopologi.png) 
 
 ## 📷 Tampilan Guacamole  
-![Login Page](guacamole_images/guacalabzerotrust.png) ![Login Page](guacamole_images/guacahttps.png)
+![Login Page](image/guacalabzerotrust.png) ![Login Page](guacamole_images/guacahttps.png)
 ![Login Page](guacamole_images/guacalabtotp.png)![Login Page](guacamole_images/guacalabrdp.png)
 
 ## Catatan
@@ -27,6 +31,7 @@ Membangun simulasi remote access kantor menggunakan:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
 
 
 
