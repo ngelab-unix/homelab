@@ -15,7 +15,6 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 | **PC Remote Access**              | 10.105.28.170   | Client RDP/SSH/VNC          |
 | **DNS guaca.ngelab-unix.biz.id**  | 10.105.28.160   | DNS local guacamole + Nginx |
 
-
 📊 **Diagram Topologi**  
 ![Topologi Jaringan](/Image/ChatGPT%20Image%20Sep%2016%2C%202025%2C%2009_49_24%20AM.png)  
 
@@ -42,41 +41,11 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 - **Web Server**: Tomcat (optional SSL termination)  
 - **Virtualization**: Canonical LXD  
 
-## 🛠️ Instalasi Singkat
-1. **Setup LXD Container**
-   lxc launch images:debian/12 guacamole
-   lxc exec guacamole bash
-   
-
-2. **Install Apache Guacamole**
-   apt update && apt install guacamole -y
-
-3. **Enable TOTP Authentication**
-   - Tambahkan ekstensi `guacamole-auth-totp`  
-   - Hubungkan dengan **Google Authenticator**  
-
-4. **(Opsional) SSL dengan Tomcat**
-   keytool -genkey -alias tomcat -keyalg RSA -keystore keystore.jks -keysize 2048
-
-
 ## 📌 Catatan
 - Tested on Debian 12 LXD Canonical container  
 - Dapat diadaptasi untuk production server (VM / baremetal)  
 - Bisa dikombinasikan dengan **VPN (WireGuard)** atau **Cloudflare Tunnel** untuk keamanan lebih lanjut  
 
-
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
-
-
-
-
-
-
-
-
-
-
-
-
