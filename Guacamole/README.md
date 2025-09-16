@@ -13,7 +13,7 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 | **LXD Host**                      | 192.168.1.xx    |  Canonical LXD Hypervisor   |
 | **Apache Guacamole**              | 10.105.28.160   | Web-based Remote Access     |
 | **PC Remote Access**              | 10.105.28.170   | Client RDP/SSH/VNC          |
-| **DNS guaca.ngelab-unix.biz.id**  | 10.105.28.160   | DNS guacamole               |
+| **DNS guaca.ngelab-unix.biz.id**  | 10.105.28.160   | DNS local guacamole + Nginx |
 
 
 📊 **Diagram Topologi**  
@@ -68,4 +68,5 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
 
