@@ -6,7 +6,7 @@
 - **PC Remote Acces** : 10.105.28.170
 
 ## 📊 Diagram Topologi
-![Topologi Jaringan](guacamole_images/guaca_cloudflaredtopologi.png) 
+![Topologi Jaringan](Image/ChatGPT%20Image%20Sep%2016%2C%202025%2C%2009_49_24%20AM.png) 
 
 # Remote Office Access Lab with Apache Guacamole 
 
@@ -31,6 +31,7 @@ Membangun simulasi remote access kantor menggunakan:
 ## 👤 Author
 Aditya Ramadhani – [LinkedIn](https://linkedin.com/in/username) | [Email](mailto:ramadhaniaditya19@gmail.com)
 -------------------------------------------------------------------------------------------------------------
+
 
 
 
