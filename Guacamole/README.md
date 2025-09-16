@@ -34,7 +34,7 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 📷 Tampilan Guacamole  
 | Login Page | HTTPS Access | TOTP Auth  | Remote Desktop |DNS local + Nginx Proxy | DNS + Cloudflared |  
 |------------|--------------|------------|----------------|------------------------|--------------------|
-| ![Login Page](Image/guacahttp.png) | ![HTTPS](Image/guacahttps.png) | ![TOTP](guacamole_images/guacalabtotp.png) | ![RDP](guacamole_images/guacalabrdp.png) |![RDP](guacamole_images/guacalabrdp.png) |![RDP](guacamole_images/guacalabrdp.png) |
+| ![Login Page](/Image/guacahttp.png) | ![HTTPS](/Image/guacahttps.png) | ![TOTP](guacamole_images/guacalabtotp.png) | ![RDP](guacamole_images/guacalabrdp.png) |![RDP](guacamole_images/guacalabrdp.png) |![RDP](guacamole_images/guacalabrdp.png) |
 
 ## ⚙️ Teknologi yang Digunakan
 - **OS**: Debian 12 (LXD Container)  
@@ -69,6 +69,7 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
 
 
 
