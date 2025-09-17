@@ -16,7 +16,8 @@ Tujuan utama adalah memastikan data grafik, konfigurasi, serta database **Cacti*
 | **Database (MariaDB)**   | internal        | Backup & Restore schema + data     |
 
 📊 **Diagram Topologi Migrasi**  
-![Topologi Migrasi Cacti](/Image/a8c23aba-dbb7-466c-879f-a66ebd2f67c7.png)  
+![Topologi Migrasi Cacti](/Image/cactimigration.png)
+![Topologi Migrasi Cacti](/Image/a8c23aba-dbb7-466c-879f-a66ebd2f67c7.png)
 
 ---
 
