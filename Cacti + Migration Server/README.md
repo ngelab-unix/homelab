@@ -13,13 +13,10 @@ Tujuan utama adalah memastikan data grafik, konfigurasi, serta database **Cacti*
 | **LXD Host**             | 192.168.1.xx    | Canonical LXD Hypervisor           |
 | **Cacti Old Server**     | 10.105.28.91    | Server lama (sumber data + graph)  |
 | **Cacti New Server**     | 10.105.28.181   | Server baru (target migrasi)       |
-
-| Opsional + Nginx Loadballance Failover                                          |
-----------------------------------------------------------------------------------
 | **Database (MariaDB)**   | internal        | Backup & Restore schema + data     |
 
 📊 **Diagram Topologi Migrasi**  
-![Topologi Migrasi Cacti](/Image/cacti_migration_topology.png)  
+![Topologi Migrasi Cacti](/Image/a8c23aba-dbb7-466c-879f-a66ebd2f67c7.png)  
 
 ---
 
