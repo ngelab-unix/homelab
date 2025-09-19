@@ -15,14 +15,10 @@ Selain itu, digunakan juga **Nginx Reverse Proxy** sebagai pintu masuk untuk tia
 
 | Komponen                          | IP Address      | Deskripsi                       |
 |-----------------------------------|-----------------|---------------------------------|
-| **MikroTik Router**               | 192.168.1.1     | Gateway LAN + DHCP Server       |
-| **Laptop (Host Canonical LXD)**   | 192.168.1.250   | Hypervisor (LXD Host)           |
-| **LXD Bridge (lxbr0)**            | 10.105.28.1     | Gateway untuk Container          |
-| **DNS Server (Bind9)**            | 10.105.28.250   | Authoritative & Recursive DNS    |
+| **DNS Server (Bind9) + Nginx**    | 10.105.28.250   | Authoritative & Recursive DNS    |
 | **Guacamole Server**              | 10.105.28.160   | Web Remote Access (guac.labunix.biz.id) |
 | **Cacti Server**                  | 10.105.28.161   | Monitoring Tool (cac01.labunix.biz.id)  |
 | **Unifi Controller**              | 10.105.28.162   | Network Management (unifi.labunix.biz.id) |
-| **Nginx Reverse Proxy**           | 10.105.28.200   | SSL Termination + Proxy          |
 
 📊 **Diagram Topologi**  
 ![Topologi Jaringan](/Image/topologi-dns-nginx.png)  
@@ -42,8 +38,7 @@ Selain itu, digunakan juga **Nginx Reverse Proxy** sebagai pintu masuk untuk tia
 - **OS**: Debian 12 (LXD Container)  
 - **DNS Server**: Bind9  
 - **Reverse Proxy**: Nginx  
-- **Virtualization**: Canonical LXD  
-- **Router**: MikroTik (DHCP + Routing DNS)  
+- **Virtualization**: Canonical LXD   
 
 ---
 
