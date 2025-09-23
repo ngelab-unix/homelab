@@ -1,0 +1,214 @@
+Nextcloud + Cloudflared - Panduan Langkah-demi-Langkah (Bahasa Indonesia)
+Target: Menjalankan Nextcloud yang dapat diakses dari mana saja melalui Cloudflare Tunnel (cloudflared)
+Lingkungan: Debian/Ubuntu (LXD container, VM, atau VPS)
+Catatan: panduan ini fokus pada setup dari awal sampai Nextcloud dapat diakses via domain melalui Cloudflare Tunnel. 
+Ganti placeholder sesuai lingkungan Anda: DOMAIN, TUNNEL_NAME, DB_PASSWORD, NEXTCLOUD_ADMIN_PASS, dsb.
+
+--------------------------------------------------------------------------------
+RINGKASAN ARSITEKTUR
+- Nextcloud (Apache/Nginx + PHP + MariaDB) berjalan di server lokal (contoh IP 10.105.28.128)
+- cloudflared membuat tunnel yang memetakan domain publik (cloud.labunix.biz.id) ke service lokal (http://localhost:80)
+- Pengguna dapat mengakses Nextcloud melalui browser/HP tanpa IP publik
+
+VARIABLES / PLACEHOLDERS (ganti sesuai)
+- DOMAIN = cloud.labunix.biz.id
+- TUNNEL_NAME = nextcloud-tunnel
+- NEXTCLOUD_DIR = /var/www/nextcloud
+- DB_NAME = nextcloud_db
+- DB_USER = nextcloud_user
+- DB_PASS = NextCloudPass!
+- ADMIN_USER = admin
+- ADMIN_PASS = YourAdminPass!
+- SERVER_USER = www-data (user web server)
+- LOCAL_PORT = 80  (port lokal yang dilayani Apache/Nginx)
+
+--------------------------------------------------------------------------------
+PRA-SYARAT
+- Server/Container dengan Debian/Ubuntu, koneksi internet untuk mengunduh paket
+- Domain terdaftar di Cloudflare (untuk menggunakan Cloudflare Tunnel)
+- Port 80 internal tersedia (cloudflared akan meneruskan ke service ini)
+- Akses root / sudo
+
+--------------------------------------------------------------------------------
+LANGKAH 0 - UPDATE SISTEM
+sudo apt update && sudo apt upgrade -y
+
+--------------------------------------------------------------------------------
+LANGKAH 1 - INSTALL PAKET DASAR (Apache, PHP, MariaDB)
+1. Pasang Apache, MariaDB, PHP dan ekstensi yang diperlukan Nextcloud (PHP >= 8.0 direkomendasikan)
+sudo apt install -y apache2 mariadb-server libapache2-mod-php php php-cli php-mysql php-gd php-xml php-mbstring php-curl php-zip php-intl php-bcmath php-imagick php-gmp php-xmlrpc unzip wget curl
+
+2. Aktifkan modul Apache yang umum dibutuhkan:
+sudo a2enmod rewrite headers env dir mime setenvif
+sudo systemctl restart apache2
+
+--------------------------------------------------------------------------------
+LANGKAH 2 - Buat Database MariaDB untuk Nextcloud
+1. Amankan instalasi MariaDB (opsional):
+sudo mysql_secure_installation
+
+2. Login ke MariaDB dan buat database/user:
+sudo mysql -u root -p
+# di prompt MariaDB:
+CREATE DATABASE nextcloud_db CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER 'nextcloud_user'@'localhost' IDENTIFIED BY 'NextCloudPass!';
+GRANT ALL PRIVILEGES ON nextcloud_db.* TO 'nextcloud_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+(Ganti password sesuai variabel DB_PASS)
+
+--------------------------------------------------------------------------------
+LANGKAH 3 - INSTALL NEXTCLOUD
+1. Unduh versi terbaru (contoh stable release):
+cd /tmp
+wget https://download.nextcloud.com/server/releases/nextcloud-28.0.3.zip
+unzip nextcloud-28.0.3.zip
+sudo mv nextcloud /var/www/nextcloud
+sudo chown -R www-data:www-data /var/www/nextcloud
+sudo chmod -R 750 /var/www/nextcloud
+
+Catatan: cek https://nextcloud.com/install/ untuk versi terbaru dan sesuaikan nama file.
+
+--------------------------------------------------------------------------------
+LANGKAH 4 - KONFIGURASI VIRTUAL HOST (Apache)
+Buat file konfigurasi berikut, ganti DOMAIN sesuai:
+sudo tee /etc/apache2/sites-available/nextcloud.conf >/dev/null <<'EOF'
+<VirtualHost *:80>
+    ServerName cloud.labunix.biz.id
+    DocumentRoot /var/www/nextcloud
+
+    <Directory /var/www/nextcloud/>
+        Require all granted
+        AllowOverride All
+        Options FollowSymLinks MultiViews
+        <IfModule mod_dav.c>
+            Dav off
+        </IfModule>
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/nextcloud_error.log
+    CustomLog ${APACHE_LOG_DIR}/nextcloud_access.log combined
+</VirtualHost>
+EOF
+
+Aktifkan site dan module Apache:
+sudo a2ensite nextcloud.conf
+sudo a2enmod rewrite
+sudo systemctl reload apache2
+
+--------------------------------------------------------------------------------
+LANGKAH 5 - SELENGKAPNYA INSTALASI NEXTCLOUD VIA WEB
+Buka browser di jaringan lokal: http://SERVER_IP/nextcloud atau http://cloud.labunix.biz.id/nextcloud (jika DNS internal sudah ada)
+Isi form instalasi:
+- Admin account (ADMIN_USER / ADMIN_PASS)
+- Data folder (default /var/www/nextcloud/data)
+- Database: MySQL / MariaDB
+  - Database user: nextcloud_user
+  - DB password: NextCloudPass!
+  - DB name: nextcloud_db
+  - Host: localhost
+
+Atau gunakan perintah occ (CLI) untuk instalasi tanpa web UI:
+sudo -u www-data php /var/www/nextcloud/occ maintenance:install --database "mysql" --database-name "nextcloud_db" --database-user "nextcloud_user" --database-pass "NextCloudPass!" --admin-user "admin" --admin-pass "YourAdminPass!"
+
+--------------------------------------------------------------------------------
+LANGKAH 6 - KERJA SAMA KONFIGURASI (PENYESUAIAN PERFORMA)
+Tambahkan rekomendasi setting di /var/www/nextcloud/config/config.php:
+- 'memcache.local' => '\OC\\Memcache\\APCu', (instal php-apcu jika perlu)
+- 'trusted_proxies' => ['127.0.0.1'], 'trusted_domains' => ['cloud.labunix.biz.id', 'IP_SERVER']
+
+Contoh instal apcu:
+sudo apt install -y php-apcu
+sudo systemctl restart apache2
+
+--------------------------------------------------------------------------------
+LANGKAH 7 - INSTALL CLOUDFLARED (CLOUDFLARE TUNNEL)
+Metode A - Unduh paket .deb (sederhana)
+wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+
+Metode B - Menggunakan repo apt (jika tersedia)
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update && sudo apt install -y cloudflared
+
+--------------------------------------------------------------------------------
+LANGKAH 8 - LOGIN & BUAT TUNNEL CLOUDFLARED
+1. Login ke Cloudflare (akan membuka browser pada workstation yang memiliki GUI):
+cloudflared tunnel login
+- Ikuti instruksi di browser, pilih zone/domain Anda di Cloudflare. Perintah ini menyimpan credentials (file .json) di ~/.cloudflared/
+
+2. Buat tunnel (ganti TUNNEL_NAME):
+cloudflared tunnel create nextcloud-tunnel
+# catatan: perintah akan menuliskan tunnel id dan membuat file credential .json
+
+3. Map tunnel ke DNS (route DNS) pada Cloudflare:
+cloudflared tunnel route dns nextcloud-tunnel cloud.labunix.biz.id
+# Ini membuat CNAME di zone Cloudflare agar domain mengarah ke tunnel
+
+--------------------------------------------------------------------------------
+LANGKAH 9 - KONFIGURASI cloudflared (service sistem)
+Buat file config /etc/cloudflared/config.yml :
+sudo tee /etc/cloudflared/config.yml >/dev/null <<'EOF'
+tunnel: NEXTCLOUD_TUNNEL_ID_or_NAME
+credentials-file: /root/.cloudflared/NEXTCLOUD_TUNNEL_ID.json
+
+ingress:
+  - hostname: cloud.labunix.biz.id
+    service: http://localhost:80
+  - service: http_status:404
+EOF
+
+Ganti NEXTCLOUD_TUNNEL_ID_or_NAME dan path credential sesuai output dari perintah create.
+
+--------------------------------------------------------------------------------
+LANGKAH 10 - JALANKAN CLOUDFLARED SEBAGAI SERVICE
+sudo cloudflared service install
+# atau manual systemd
+sudo systemctl enable --now cloudflared
+sudo systemctl status cloudflared
+
+Periksa log untuk debugging:
+sudo journalctl -u cloudflared -f
+
+--------------------------------------------------------------------------------
+LANGKAH 11 - TRUSTED PROXIES & CONFIG NEXTCLOUD
+Karena koneksi datang lewat Cloudflare, tambahkan domain & proxy di config.php Nextcloud:
+Edit /var/www/nextcloud/config/config.php tambahkan/ubah:
+'trusted_domains' => 
+  0 => 'cloud.labunix.biz.id',
+  1 => '10.105.28.128',
+
+'trusted_proxies' => ['127.0.0.1', '::1'], 
+'overwriteprotocol' => 'https',
+
+Setelah perubahan restart apache:
+sudo systemctl restart apache2
+
+--------------------------------------------------------------------------------
+LANGKAH 12 - AKSES DARI HP / LAPTOP
+- Install aplikasi Nextcloud (Android/iOS) atau gunakan Web browser.
+- Masukkan URL: https://cloud.labunix.biz.id
+- Login dengan akun Nextcloud yang dibuat.
+- Aplikasi akan meng-upload/download file melalui Cloudflare Tunnel.
+
+--------------------------------------------------------------------------------
+LANGKAH 13 - PENGAMANAN & PRAKTIK TERBAIK
+- Aktifkan 2FA di Nextcloud untuk user.
+- Pasang HTTPS origin cert jika ingin encrypt koneksi antara cloudflared dan server.
+- Backup database dan folder data Nextcloud secara berkala.
+- Aktifkan rate-limits, monitoring, dan logging.
+- Jika push performa, pertimbangkan menggunakan PHP-FPM + Nginx dan caching (Redis/APCu).
+
+--------------------------------------------------------------------------------
+LANGKAH 14 - TROUBLESHOOTING UMUM
+- cloudflared tidak mau start: cek credential file, tunnel id, dan log (journalctl -u cloudflared)
+- 502/504: periksa service lokal (Apache), pastikan localhost:80 melayani request, dan firewall tidak memblokir.
+- Nextcloud error: cek /var/www/nextcloud/data/nextcloud.log dan apache log
+- Permintaan dari app mobile gagal: cek trusted_proxies dan overwriteprotocol di config.php
+
+--------------------------------------------------------------------------------
+PENUTUP
+Panduan ini memandu instalasi Nextcloud lokal + Cloudflare Tunnel agar bisa diakses dari mana saja tanpa IP publik.
+Setelah bagian ini jalan, kita bisa tambahkan: SSL origin cert, rate-limiting, AD/LDAP integration, external storage (S3), dan backup otomatis.
