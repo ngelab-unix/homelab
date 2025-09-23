@@ -1,0 +1,311 @@
+
+# 📧 Panduan Lengkap: Mail Server Lokal (Postfix + Dovecot) — Bahasa Indonesia
+Tujuan: Menyiapkan mail server lokal untuk domain `ngelab-unix.biz.id` di jaringan lab (kirim & terima antar-user di LAN). 
+Tidak termasuk koneksi ke Internet (relay/outgoing) atau penerimaan mail publik (MX publik) — itu tahap berikutnya.
+
+--------------------------------------------------------------------------------
+TOPOLOGI (sesuai yang Anda sebutkan)
+- MikroTik Router : 192.168.1.1/24 (gateway)
+- Laptop/Host (fisik) : 192.168.1.251 (client)
+- LXD Host Canonical : 192.168.1.250 (hypervisor)
+- LXD Bridge (isolated) : 10.105.28.1/24 (lxbr0)
+  - DNS server : 10.105.28.187 (dns.ngelab-unix.biz.id)
+  - Mail server : 10.105.28.128 (mail.ngelab-unix.biz.id)
+
+Catatan: agar client (192.168.1.0/24) dapat mengakses container di 10.105.28.0/24, MikroTik harus punya route ke subnet 10.105.28.0/24 via gateway 192.168.1.250 (LXD host). Petunjuk dituliskan di bagian bawah.
+
+--------------------------------------------------------------------------------
+PRA-REQUISITES (sebelum mulai)
+- Akses root/sudo ke LXD host dan container (atau VM Debian/Ubuntu).
+- LXD sudah terinstall (opsional) atau Anda punya VM Debian/Ubuntu untuk installer.
+- IP dan nama domain yang akan dipakai: `ngelab-unix.biz.id`.
+- Waktu pelaksanaan: 30–60 menit (tergantung pengalaman).
+
+--------------------------------------------------------------------------------
+LANGKAH 1 — Buat container LXD (opsional)
+Jika Anda ingin menggunakan LXD, jalankan di host (192.168.1.250):
+```bash
+# contoh membuat container Debian 12 bernama 'mail'
+lxc launch images:debian/12 mail
+# tambahkan interface bridged dengan alamat statik di lxbr0 (opsional),
+# atau gunakan DHCP LXD network untuk assign IP.
+lxc config device add mail eth0 nic nictype=bridged parent=lxbr0 ipv4.address=10.105.28.128
+lxc start mail
+lxc exec mail -- bash   # masuk ke shell container
+```
+Jika Anda menggunakan VM, login via SSH ke VM dan lanjut ke langkah berikutnya.
+
+--------------------------------------------------------------------------------
+LANGKAH 2 — Update & Install paket mail
+Di dalam container / VM jalankan:
+```bash
+apt update
+apt upgrade -y
+apt install -y postfix dovecot-imapd dovecot-pop3d mailutils
+```
+- Saat instalasi `postfix`, pilih "Internet Site" (pilih sementara; nanti kita edit).
+- `mailutils` membantu untuk testing pengiriman lokal (`mail` command).
+
+--------------------------------------------------------------------------------
+LANGKAH 3 — Hostname & /etc/hosts
+Set hostname agar konsisten:
+```bash
+hostnamectl set-hostname mail.ngelab-unix.biz.id
+echo "10.105.28.128 mail.ngelab-unix.biz.id mail" >> /etc/hosts
+```
+(Ubah IP jika berbeda.) Tambahkan juga entry di client (PC/laptop) jika belum ada DNS internal:
+- Windows: edit `C:\Windows\System32\drivers\etc\hosts`
+- Linux: edit `/etc/hosts`
+
+Contoh baris hosts:
+```
+10.105.28.128 mail.ngelab-unix.biz.id mail
+10.105.28.187 dns.ngelab-unix.biz.id dns
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 4 — Konfigurasi DNS internal (Bind9) pada 10.105.28.187
+Di server DNS internal Anda (10.105.28.187), instal bind9:
+```bash
+apt update
+apt install -y bind9 bind9utils dnsutils
+```
+Edit `/etc/bind/named.conf.local` tambahkan zone:
+```conf
+zone "ngelab-unix.biz.id" {
+    type master;
+    file "/etc/bind/zones/db.ngelab-unix.biz.id";
+};
+zone "28.105.10.in-addr.arpa" {
+    type master;
+    file "/etc/bind/zones/db.10.105.28";
+};
+```
+Buat folder zones dan file zona forward / reverse:
+```bash
+mkdir -p /etc/bind/zones
+```
+Isi `/etc/bind/zones/db.ngelab-unix.biz.id`:
+```zone
+$TTL 3600
+@   IN  SOA dns.ngelab-unix.biz.id. admin.ngelab-unix.biz.id. (
+        2025092301 ; serial (ubah setiap edit, format YYYYMMDDNN)
+        3600 ; refresh
+        1800 ; retry
+        604800 ; expire
+        86400 ; minimum
+)
+    IN  NS  dns.ngelab-unix.biz.id.
+dns IN  A   10.105.28.187
+mail IN  A   10.105.28.128
+@    IN  MX 10 mail.ngelab-unix.biz.id.
+```
+Isi `/etc/bind/zones/db.10.105.28` (reverse):
+```zone
+$TTL 3600
+@ IN SOA dns.ngelab-unix.biz.id. admin.ngelab-unix.biz.id. (
+    2025092301 ; serial
+    3600
+    1800
+    604800
+    86400 )
+    IN NS dns.ngelab-unix.biz.id.
+128 IN PTR mail.ngelab-unix.biz.id.
+187 IN PTR dns.ngelab-unix.biz.id.
+```
+Periksa konfigurasi dan restart bind9:
+```bash
+named-checkzone ngelab-unix.biz.id /etc/bind/zones/db.ngelab-unix.biz.id
+named-checkzone 28.105.10.in-addr.arpa /etc/bind/zones/db.10.105.28
+systemctl restart bind9
+systemctl status bind9
+```
+Uji dari client/host:
+```bash
+dig @10.105.28.187 mail.ngelab-unix.biz.id +short
+# expected: 10.105.28.128
+dig @10.105.28.187 -x 10.105.28.128 +short
+# expected: mail.ngelab-unix.biz.id
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 5 — Konfigurasi Postfix di mail server (10.105.28.128)
+Backup config lalu edit `/etc/postfix/main.cf` (hanya tambahkan/ubah baris penting):
+```conf
+# identitas host
+myhostname = mail.ngelab-unix.biz.id
+mydomain = ngelab-unix.biz.id
+myorigin = $mydomain
+
+# terima mail untuk domain lokal
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+
+# napi jaringan lokal
+mynetworks = 127.0.0.0/8, 10.105.28.0/24, 192.168.1.0/24
+
+# listen di semua interface container
+inet_interfaces = all
+inet_protocols = ipv4
+
+# deliver ke Maildir di home user
+home_mailbox = Maildir/
+
+# jangan jadi open relay
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+```
+Simpan lalu restart postfix:
+```bash
+systemctl restart postfix
+systemctl status postfix
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 6 — Konfigurasi Dovecot (IMAP/POP3)
+Edit `/etc/dovecot/conf.d/10-mail.conf`:
+```conf
+mail_location = maildir:~/Maildir
+```
+Edit `/etc/dovecot/conf.d/10-auth.conf` (untuk lab, non-TLS sementara):
+```conf
+disable_plaintext_auth = no
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+```
+Tambahkan listener auth supaya Postfix bisa pakai SASL (opsional sekarang, tapi berguna untuk submission):
+Edit `/etc/dovecot/conf.d/10-master.conf` cari blok `service auth` dan tambahkan:
+```conf
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+```
+Restart dovecot:
+```bash
+systemctl restart dovecot
+systemctl status dovecot
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 7 — Buat user mail & Maildir
+Buat akun Linux yang menjadi user mail, misal `user1` dan `user2`:
+```bash
+adduser user1
+adduser user2
+```
+Setelah user dibuat, pastikan Maildir ada (dovecot biasanya membuat saat pertama login via IMAP; untuk manual):
+```bash
+sudo -u user1 mkdir -p /home/user1/Maildir/{cur,new,tmp}
+sudo chown -R user1:user1 /home/user1/Maildir
+```
+Ulangi untuk user2.
+
+--------------------------------------------------------------------------------
+LANGKAH 8 — Uji kirim & terima lokal
+Kirim email dari user1 ke user2 (di mesin server):
+```bash
+echo "Halo, ini test lokal" | mail -s "Test lokal" user2@ngelab-unix.biz.id
+```
+Cek Maildir user2:
+```bash
+ls -l /home/user2/Maildir/new
+sudo -u user2 mail   # atau gunakan mailx/mutt untuk membaca
+```
+Cek log untuk detail delivery:
+```bash
+tail -n 200 /var/log/mail.log
+```
+Jika ada error, baca log untuk petunjuk (ownership, permissions, atau konfigurasi postfix).
+
+--------------------------------------------------------------------------------
+LANGKAH 9 — Konfigurasi client (Thunderbird / Outlook)
+Di komputer client (192.168.1.x) atau laptop, tambahkan akun dengan setting:
+- Nama server masuk (IMAP): `mail.ngelab-unix.biz.id` port 143 (non-SSL) atau 993 (SSL bila sudah TLS)
+- Nama server keluar (SMTP): `mail.ngelab-unix.biz.id` port 587 (submission) atau 25 (SMTP)
+- Username: `user1` (atau user yang dibuat)
+- Password: password user Linux
+Jika tidak ada DNS internal, tambahkan entry di `hosts` ke IP 10.105.28.128.
+
+--------------------------------------------------------------------------------
+LANGKAH 10 — Enable TLS (opsional tapi direkomendasikan untuk keamanan)
+Untuk lab, Anda bisa memakai sertifikat self-signed dulu:
+```bash
+mkdir -p /etc/ssl/private
+openssl req -new -x509 -days 365 -nodes -out /etc/ssl/certs/mail.pem -keyout /etc/ssl/private/mail.key -subj "/CN=mail.ngelab-unix.biz.id"
+chmod 600 /etc/ssl/private/mail.key
+```
+Konfigurasi Postfix (tambahkan di main.cf):
+```conf
+smtpd_tls_cert_file=/etc/ssl/certs/mail.pem
+smtpd_tls_key_file=/etc/ssl/private/mail.key
+smtpd_use_tls = yes
+smtpd_tls_security_level = may
+```
+Konfigurasi Dovecot (`/etc/dovecot/conf.d/10-ssl.conf`):
+```conf
+ssl = yes
+ssl_cert = </etc/ssl/certs/mail.pem
+ssl_key = </etc/ssl/private/mail.key
+```
+Restart layanan:
+```bash
+systemctl restart postfix dovecot
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 11 — Perintah pengecekan & troubleshooting cepat
+- Cek konfigurasi postfix: `postconf -n`
+- Cek service status: `systemctl status postfix dovecot bind9`
+- Lihat log realtime: `tail -f /var/log/mail.log`
+- Cek queue: `postqueue -p`
+- Cek file permission Maildir owner: `ls -l /home/user1/Maildir`
+- Jika Dovecot tidak mengijinkan login: `journalctl -u dovecot -e`
+
+--------------------------------------------------------------------------------
+LANGKAH 12 — Route dari MikroTik (penting jika client di subnet 192.168.1.0/24 perlu akses ke 10.105.28.0/24)
+Jika client di jaringan 192.168.1.0/24 ingin reach container 10.105.28.128, tambahkan route di MikroTik:
+Di CLI MikroTik (Winbox/Terminal):
+```
+/ip route add dst-address=10.105.28.0/24 gateway=192.168.1.250
+```
+(192.168.1.250 = IP LXD host kamu). Juga pastikan host mengaktifkan ip_forward:
+Di LXD host (192.168.1.250):
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+# persist: tambahkan net.ipv4.ip_forward=1 di /etc/sysctl.conf
+```
+Tambahkan iptables FORWARD rules jika perlu:
+```bash
+PHY_IF=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
+BR_IF=lxbr0
+sudo iptables -A FORWARD -i $PHY_IF -o $BR_IF -j ACCEPT
+sudo iptables -A FORWARD -i $BR_IF -o $PHY_IF -j ACCEPT
+```
+
+--------------------------------------------------------------------------------
+LANGKAH 13 — Checklist screenshot & dokumentasi (untuk README di repo Anda)
+Ambil screenshot / output berikut untuk dokumentasi GitHub/portofolio:
+- `lxc list` atau `ip a` menampilkan container & IP
+- Isi file zone `/etc/bind/zones/db.ngelab-unix.biz.id`
+- Output `dig @10.105.28.187 mail.ngelab-unix.biz.id`
+- Hasil `tail /var/log/mail.log` saat mengirim local mail
+- Screenshot Thunderbird terhubung dan menerima mail
+- MikroTik route entry screenshot (Winbox) atau output CLI route
+
+--------------------------------------------------------------------------------
+LANGKAH 14 — Langkah berikutnya (setelah local testing OK)
+- Tambah SMTP relay (relayhost) di Postfix agar server dapat kirim ke Internet
+- Gunakan Mail Gateway / MX provider + fetchmail untuk menerima mail dari Internet
+- Konfigurasi SPF / DKIM / DMARC (agar tidak masuk spam jika kirim ke luar)
+- Pertimbangkan penggunaan TLS valid (Let's Encrypt) jika Anda expose service ke Internet
+
+--------------------------------------------------------------------------------
+PENUTUP
+Dokumen ini untuk kebutuhan lab lokal — aman dan cukup untuk mempelajari operasi mail server.
+Jika Anda mau, saya bisa:
+- (A) buatkan script otomatis yang menerapkan langkah-langkah ini di container Anda, atau
+- (B) bantu langkah per langkah interaktif (Anda jalankan perintah lalu kirim hasil log), atau
+- (C) lanjutkan ke konfigurasi relay/outgoing dan incoming production (Cloudflare Email Routing / Mailgun / fetchmail).
+Pilih salah satu dan saya lanjutkan.

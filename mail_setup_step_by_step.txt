@@ -1,0 +1,253 @@
+
+POSTFIX + DOVECOT LOCAL MAIL SERVER SETUP (STEP-BY-STEP)
+Target: Local LAN-only mail service for domain (no public incoming/outgoing yet)
+Platform: Debian/Ubuntu (LXD container or VM)
+Placeholders you MUST replace:
+  DOMAIN        = labunix.biz.id
+  HOSTNAME      = mail.labunix.biz.id
+  HOST_IP       = 10.105.28.180   # IP of the container/VM on local network
+  MAIL_USER     = alice
+  MAIL_USER_PW  = (password you set)
+  LOCAL_NET     = 10.105.28.0/24  # network where clients live
+
+---
+0. NOTES BEFORE START
+- These steps create a local mail system for testing inside your LAN only.
+- If no DNS, add hosts entries on client machines to resolve mail.labunix.biz.id -> HOST_IP.
+- Run as root or with sudo.
+- After local tests, later steps can add TLS, relay, or fetchmail to connect to external mail providers.
+
+---
+1) CREATE / START CONTAINER (LXD) - optional if you already have VM/container
+# on LXD host
+lxc launch images:debian/12 mail
+lxc exec mail -- bash
+# now you are inside the container shell as root
+
+(If not using LXD, SSH into the Debian/Ubuntu VM and run commands below.)
+
+---
+2) UPDATE & INSTALL PACKAGES
+apt update
+apt install -y postfix dovecot-imapd dovecot-pop3d mailutils
+
+# During Postfix install choose "Internet Site" when prompted (we will edit later).
+
+---
+3) SET HOSTNAME & /etc/hosts
+hostnamectl set-hostname mail.labunix.biz.id
+echo "10.105.28.180 mail.labunix.biz.id mail" >> /etc/hosts
+# Replace IP/domain accordingly.
+
+---
+4) CREATE MAIL USER & MAILDIR
+useradd -m -s /bin/bash alice
+passwd alice   # set password interactively
+# create Maildir structure
+sudo -u alice mkdir -p /home/alice/Maildir/{cur,new,tmp}
+sudo chown -R alice:alice /home/alice/Maildir
+
+---
+5) POSTFIX MAIN CONFIGURATION (local-only)
+# Backup original
+cp /etc/postfix/main.cf /etc/postfix/main.cf.orig
+
+# Recommended main.cf minimal settings (replace placeholders)
+# Edit /etc/postfix/main.cf and ensure these settings exist / are updated:
+--------------------- /etc/postfix/main.cf ---------------------
+# identity
+myhostname = mail.labunix.biz.id
+mydomain = labunix.biz.id
+myorigin = $mydomain
+
+# accept mail for local domain
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+
+# networks allowed to relay without auth (lab internal)
+mynetworks = 127.0.0.0/8, 10.105.28.0/24
+
+# listen on all interfaces in container (or restrict to interface)
+inet_interfaces = all
+
+# deliver to Maildir in home directory
+home_mailbox = Maildir/
+
+# safety: prevent open relay
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+
+# Optional: provide readable banner
+smtpd_banner = $myhostname ESMTP
+--------------------- end main.cf ---------------------------------
+
+# After editing restart postfix
+systemctl restart postfix
+systemctl status postfix
+
+---
+6) DOVECOT CONFIGURATION (Maildir + IMAP)
+
+# Configure mail location
+# Edit /etc/dovecot/conf.d/10-mail.conf and set:
+------------------ /etc/dovecot/conf.d/10-mail.conf ----------------
+mail_location = maildir:~/Maildir
+------------------ end ---------------------------------------------
+
+# Authentication - /etc/dovecot/conf.d/10-auth.conf
+------------------ /etc/dovecot/conf.d/10-auth.conf ----------------
+disable_plaintext_auth = no      # for lab testing; set to yes when TLS enabled
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+------------------ end ---------------------------------------------
+
+# Ensure protocols include imap/pop3 - check /etc/dovecot/dovecot.conf
+# Typically: protocols = imap pop3 lmtp
+# Restart dovecot
+systemctl restart dovecot
+systemctl status dovecot
+
+---
+7) ENABLE SASL AUTH VIA DOVECOT FOR SMTP SUBMISSION (OPTIONAL BUT RECOMMENDED)
+
+# Edit /etc/dovecot/conf.d/10-master.conf - add unix_listener for postfix auth
+# find service auth { ... } and ensure the following block exists:
+------------------ snippet from /etc/dovecot/conf.d/10-master.conf ----------------
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+------------------ end snippet -------------------------------------------------
+
+# In Postfix main.cf ensure these lines are present:
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+smtpd_tls_security_level = may
+smtpd_recipient_restrictions = permit_sasl_authenticated, permit_mynetworks, reject_unauth_destination
+
+# Restart both services
+systemctl restart dovecot
+systemctl restart postfix
+
+---
+8) TEST LOCAL DELIVERY (SERVER => LOCAL USER)
+# Send a test mail on the server to alice
+echo "Hello Alice - local test" | mail -s "Local test" alice@labunix.biz.id
+
+# Check Maildir for new mail
+ls -l /home/alice/Maildir/new
+# or read mail with
+sudo -u alice mail
+
+# Check logs for delivery info
+tail -n 200 /var/log/mail.log
+
+---
+9) TEST REMOTE CLIENT (Thunderbird / Outlook) CONNECTIVITY
+# On your client machine (on same LAN), configure account:
+IMAP (incoming):
+  Server: mail.labunix.biz.id  (or 10.105.28.180)
+  Port: 143 (IMAP) or 993 (IMAPS if you have TLS)
+  Username: alice
+  Password: (the one you set)
+
+SMTP (submission):
+  Server: mail.labunix.biz.id (or 10.105.28.180)
+  Port: 587 (submission)
+  Authentication: yes (use same username alice)
+  Encryption: STARTTLS if available
+
+# For testing before TLS, you can use plaintext on port 143 and submission 587 with auth.
+# If name resolution not available, add hosts entry on client:
+#   10.105.28.180 mail.labunix.biz.id
+
+---
+10) ENABLE TLS (Optional, recommended before exposing services)
+# You can use self-signed certs or Let's Encrypt if reachable publicly.
+# To create a self-signed cert quickly (lab):
+mkdir -p /etc/ssl/private
+openssl req -new -x509 -days 365 -nodes -out /etc/ssl/certs/mail.pem -keyout /etc/ssl/private/mail.key -subj "/CN=mail.labunix.biz.id"
+chmod 600 /etc/ssl/private/mail.key
+
+# Configure Postfix main.cf to use certs:
+smtpd_tls_cert_file=/etc/ssl/certs/mail.pem
+smtpd_tls_key_file=/etc/ssl/private/mail.key
+smtpd_use_tls=yes
+
+# Configure Dovecot 10-ssl.conf:
+ssl = yes
+ssl_cert = </etc/ssl/certs/mail.pem
+ssl_key = </etc/ssl/private/mail.key
+
+systemctl restart postfix dovecot
+
+---
+11) SIMPLE TROUBLESHOOTING COMMANDS
+# Check postfix config
+postconf -n
+# Check logs
+tail -f /var/log/mail.log
+# Check queue
+postqueue -p
+# Check dovecot status and logs
+systemctl status dovecot
+journalctl -u dovecot -n 200
+
+---
+12) NEXT STEPS (later: outgoing/incoming external)
+- Add SMTP relay (relayhost) in Postfix to send outgoing via provider (Mailgun/Sendgrid/Gmail) — steps will be separate.
+- Use Mail Gateway / MX provider (Cloudflare Email Routing, ImprovMX) + fetchmail for incoming — steps will be separate.
+- Configure DKIM with opendkim if you will sign locally (or use provider signing).
+- Harden configuration: set disable_plaintext_auth=yes, enable fail2ban, restrict mynetworks, enable TLS certs from trusted CA.
+
+---
+13) COMMON FILES SNIPPET QUICK-REFERENCE
+/etc/postfix/main.cf  (important lines)
+---------------------------------------------------------
+myhostname = mail.labunix.biz.id
+mydomain = labunix.biz.id
+myorigin = $mydomain
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+mynetworks = 127.0.0.0/8, 10.105.28.0/24
+inet_interfaces = all
+home_mailbox = Maildir/
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-mail.conf
+---------------------------------------------------------
+mail_location = maildir:~/Maildir
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-auth.conf (key lines)
+---------------------------------------------------------
+disable_plaintext_auth = no
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-master.conf (auth unix listener)
+---------------------------------------------------------
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+---------------------------------------------------------
+
+---
+14) NOTES & BEST PRACTICES (for lab)
+- For lab, disable strict restrictions, but never expose an unauthenticated relay to the internet.
+- When moving to external internet, ensure PTR record exists (if you will accept inbound SMTP directly), or use a relay/gateway approach.
+- Use /etc/hosts on clients if no DNS present.
+- Backup /etc/postfix and /etc/dovecot configuration before changes.
+
+---
+End of file.
