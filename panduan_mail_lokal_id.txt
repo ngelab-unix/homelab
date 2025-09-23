@@ -1,0 +1,244 @@
+
+POSTFIX + DOVECOT - PANDUAN LANGKAH DENGAN BAHASA INDONESIA
+Target: Layanan email lokal di jaringan LAN (belum terhubung ke Internet)
+Platform: Debian/Ubuntu (LXD container atau VM)
+Ganti placeholder sebelum menjalankan: 
+  DOMAIN        = labunix.biz.id
+  HOSTNAME      = mail.labunix.biz.id
+  HOST_IP       = 10.105.28.180   # IP container/VM di jaringan lokal
+  MAIL_USER     = alice
+  MAIL_USER_PW  = (password yang Anda buat)
+  LOCAL_NET     = 10.105.28.0/24  # jaringan lokal client
+
+----------------------------------------
+0) CATATAN PENTING SEBELUM MULAI
+- Panduan ini membuat mail server lokal untuk pengujian di LAN saja.
+- Jika tidak ada DNS internal, tambahkan entri /etc/hosts di tiap client untuk resolve mail.labunix.biz.id -> HOST_IP.
+- Jalankan perintah sebagai root atau pakai sudo.
+- Setelah bagian lokal sukses, kita bisa lanjut ke TLS/relay/fetchmail untuk koneksi ke Internet.
+
+----------------------------------------
+1) BUAT / START CONTAINER (opsional jika sudah punya VM)
+# Jika memakai LXD pada host:
+lxc launch images:debian/12 mail
+lxc exec mail -- bash
+# Anda sekarang berada di shell container sebagai root.
+
+(Atau ssh ke VM Debian/Ubuntu lalu jalankan langkah berikut.)
+
+----------------------------------------
+2) UPDATE & INSTALL PAKET
+apt update
+apt install -y postfix dovecot-imapd dovecot-pop3d mailutils
+
+# Saat instalasi postfix: pilih "Internet Site" jika diminta (konfigurasi akan disesuaikan nanti).
+
+----------------------------------------
+3) SET HOSTNAME & /etc/hosts
+hostnamectl set-hostname mail.labunix.biz.id
+echo "10.105.28.180 mail.labunix.biz.id mail" >> /etc/hosts
+# Ganti IP / domain sesuai lingkungan Anda.
+
+----------------------------------------
+4) BUAT USER MAIL & MAILDIR
+useradd -m -s /bin/bash alice
+passwd alice   # masukkan password
+# buat struktur Maildir
+sudo -u alice mkdir -p /home/alice/Maildir/{cur,new,tmp}
+sudo chown -R alice:alice /home/alice/Maildir
+
+----------------------------------------
+5) KONFIGURASI POSTFIX (khusus lokal)
+# Backup file original
+cp /etc/postfix/main.cf /etc/postfix/main.cf.orig
+
+# Edit /etc/postfix/main.cf dan tambahkan / ubah bagian penting:
+--------------------- /etc/postfix/main.cf ---------------------
+myhostname = mail.labunix.biz.id
+mydomain = labunix.biz.id
+myorigin = $mydomain
+
+# terima mail untuk domain ini (local delivery)
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+
+# jaringan yang diizinkan relay (untuk lab)
+mynetworks = 127.0.0.0/8, 10.105.28.0/24
+
+inet_interfaces = all
+
+# dorong delivery ke Maildir di home user
+home_mailbox = Maildir/
+
+# mencegah open relay
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+
+smtpd_banner = $myhostname ESMTP
+--------------------- end main.cf ---------------------------------
+
+# Setelah edit restart postfix
+systemctl restart postfix
+systemctl status postfix
+
+----------------------------------------
+6) KONFIGURASI DOVECOT (Maildir + IMAP)
+# Edit /etc/dovecot/conf.d/10-mail.conf
+------------------ /etc/dovecot/conf.d/10-mail.conf ----------------
+mail_location = maildir:~/Maildir
+------------------ end ---------------------------------------------
+
+# Edit /etc/dovecot/conf.d/10-auth.conf
+------------------ /etc/dovecot/conf.d/10-auth.conf ----------------
+disable_plaintext_auth = no      # untuk lab; ubah ke yes bila sudah TLS
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+------------------ end ---------------------------------------------
+
+# Pastikan protokol aktif (cek /etc/dovecot/dovecot.conf)
+# biasanya: protocols = imap pop3 lmtp
+# Restart dovecot
+systemctl restart dovecot
+systemctl status dovecot
+
+----------------------------------------
+7) ENABLE SASL VIA DOVECOT (supaya client SMTP bisa auth)
+# Edit /etc/dovecot/conf.d/10-master.conf bagian service auth -> tambahkan listener:
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+
+# Di /etc/postfix/main.cf pastikan baris berikut ada:
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+smtpd_tls_security_level = may
+smtpd_recipient_restrictions = permit_sasl_authenticated, permit_mynetworks, reject_unauth_destination
+
+# Restart layanan
+systemctl restart dovecot
+systemctl restart postfix
+
+----------------------------------------
+8) PENGUJIAN PENGIRIMAN LOKAL
+# Kirim email dari server ke user lokal
+echo "Halo Alice - test lokal" | mail -s "Test lokal" alice@labunix.biz.id
+
+# Periksa Maildir
+ls -l /home/alice/Maildir/new
+# Baca dengan:
+sudo -u alice mail
+
+# Lihat log postfix
+tail -n 200 /var/log/mail.log
+
+----------------------------------------
+9) KONFIGURASI KLIEN (Thunderbird / Outlook) - di PC client pada LAN
+IMAP (incoming):
+  Server: mail.labunix.biz.id  (atau 10.105.28.180)
+  Port: 143 (IMAP) atau 993 (IMAPS jika TLS aktif)
+  Username: alice
+  Password: (yang Anda set)
+
+SMTP (submission):
+  Server: mail.labunix.biz.id (atau IP 10.105.28.180)
+  Port: 587 (submission)
+  Authentication: yes (gunakan username/password yang sama)
+  Encryption: STARTTLS bila tersedia
+
+# Jika client tidak resolve nama, tambahkan entry hosts:
+# 10.105.28.180 mail.labunix.biz.id
+
+----------------------------------------
+10) MENAMBAHKAN TLS SEDERHANA (opsional tapi disarankan)
+# Buat sertifikat self-signed cepat (untuk lab)
+mkdir -p /etc/ssl/private
+openssl req -new -x509 -days 365 -nodes -out /etc/ssl/certs/mail.pem -keyout /etc/ssl/private/mail.key -subj "/CN=mail.labunix.biz.id"
+chmod 600 /etc/ssl/private/mail.key
+
+# Konfigurasi Postfix (main.cf)
+smtpd_tls_cert_file=/etc/ssl/certs/mail.pem
+smtpd_tls_key_file=/etc/ssl/private/mail.key
+smtpd_use_tls=yes
+
+# Konfigurasi Dovecot (10-ssl.conf)
+ssl = yes
+ssl_cert = </etc/ssl/certs/mail.pem
+ssl_key = </etc/ssl/private/mail.key
+
+systemctl restart postfix dovecot
+
+----------------------------------------
+11) PERINTAH DEBUG & TROUBLESHOOTING SINGKAT
+# Lihat konfigurasi Postfix aktif
+postconf -n
+
+# Lihat log realtime
+tail -f /var/log/mail.log
+
+# Cek queue
+postqueue -p
+
+# Status Dovecot
+systemctl status dovecot
+journalctl -u dovecot -n 200
+
+----------------------------------------
+12) LANGKAH SELANJUTNYA (SETELAH LOKAL BERJALAN)
+- Tambah TLS valid (LetsEncrypt) bila siap expose ke Internet.
+- Tambah relayhost di Postfix untuk outgoing ke Internet (Mailgun/Sendgrid/Gmail).
+- Gunakan Mail Gateway (Cloudflare Email Routing, ImprovMX) + fetchmail untuk incoming dari Internet.
+- Konfigurasi DKIM (opendkim) bila ingin tanda tangan email lokal atau konfigurasi provider melakukannya.
+- Harden configuration: ubah disable_plaintext_auth=yes, install fail2ban, batasi mynetworks.
+
+----------------------------------------
+13) SNIPPET PENTING FILE KONFIGURASI (RINGKAS)
+/etc/postfix/main.cf (baris penting)
+---------------------------------------------------------
+myhostname = mail.labunix.biz.id
+mydomain = labunix.biz.id
+myorigin = $mydomain
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+mynetworks = 127.0.0.0/8, 10.105.28.0/24
+inet_interfaces = all
+home_mailbox = Maildir/
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-mail.conf
+---------------------------------------------------------
+mail_location = maildir:~/Maildir
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-auth.conf (baris penting)
+---------------------------------------------------------
+disable_plaintext_auth = no
+auth_mechanisms = plain login
+!include auth-system.conf.ext
+---------------------------------------------------------
+
+/etc/dovecot/conf.d/10-master.conf (auth unix listener)
+---------------------------------------------------------
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+---------------------------------------------------------
+
+----------------------------------------
+14) BEST PRACTICES UNTUK LAB
+- Jangan buka service SMTP (port 25) ke internet tanpa konfigurasi yang benar.
+- Gunakan /etc/hosts di client jika belum punya DNS internal.
+- Backup /etc/postfix dan /etc/dovecot sebelum ubahan besar.
+- Untuk environment publik, pastikan PTR, SPF, DKIM, DMARC, dan relay yang terpercaya.
+
+----------------------------------------
+Selesai.
