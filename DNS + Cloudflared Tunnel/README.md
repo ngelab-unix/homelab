@@ -30,8 +30,7 @@ Selain itu, digunakan juga **Nginx Reverse Proxy + SSL/TLS** sebagai pintu masuk
 - ✅ Mengatur **subdomain internal** untuk tiap aplikasi lab  
 - ✅ Menggunakan **Nginx Reverse Proxy** sebagai front-end akses aplikasi
 - ✅ Menggunakan **SSL/TLS** sebagai keamanan https  
-- ✅ Memberikan **akses berbasis domain** alih-alih menggunakan IP:Port  
-- ✅ Siap digunakan untuk lab enterprise kecil  
+- ✅ Memberikan **akses berbasis domain** alih-alih menggunakan IP:Port   
 
 ---
 
@@ -71,7 +70,8 @@ Selain itu, digunakan juga **Nginx Reverse Proxy + SSL/TLS** sebagai pintu masuk
 
 ## 📌 Catatan
 - Semua subdomain diselesaikan oleh **Bind9** (internal DNS server)  
-- **MikroTik DHCP** memastikan semua klien memakai DNS internal secara otomatis  
+- **MikroTik DHCP** memastikan semua klien memakai DNS internal secara otomatis
+- Next buat 2 domain dalam 1 DNS dan masing-masing domain ada subdomain    
 - **Nginx** memudahkan akses domain → IP container tanpa perlu port khusus  
 - Menggunakan SSL/TLS **Let’s Encrypt** (jika server publik) atau **Self-Signed CA**  
 
