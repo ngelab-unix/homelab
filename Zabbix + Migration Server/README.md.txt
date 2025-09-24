@@ -56,10 +56,11 @@ Tujuan utama adalah memastikan data grafik, konfigurasi, serta database **Zabbix
 ## 📌 Catatan
 - Tested on Debian 12 LXD Canonical container  
 - Migrasi diuji antara versi **Zabbix 1.2.x → 1.3.x (latest)**  
-- Bisa diintegrasikan dengan **Nginx Load Balancer + Failover** jika jumlah client lebih banyak  
+- Next bisa diintegrasikan dengan **Nginx Load Balancer + Failover dengan 1 Database & 2 Zabbix Server**  
 
 ---
 
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
