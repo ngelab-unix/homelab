@@ -36,6 +36,12 @@ Tujuan utama adalah memastikan data grafik, konfigurasi, serta database **Cacti*
 |-----------|---------------|------------|--------------|
 | ![Backup](/Image/cacti_backup.png) | ![Transfer](/Image/cacti_transfer.png) | ![Restore](/Image/cacti_restore.png) | ![Verify](/Image/cacti_verify.png) |
 
+## 📷 Cacti + DNS External + Cloudflare  
+
+| Nslookup  | Cacti |
+|-----------|-------|
+| ![Backup](/Image/cacti_backup.png) | ![Transfer](/Image/cacti_transfer.png) |
+
 ---
 
 ## ⚙️ Teknologi yang Digunakan
