@@ -1,4 +1,4 @@
-# 🌐 Local DNS & Reverse Proxy Lab
+# 🌐 Local DNS & Reverse Proxy Lab + SSL/TLS
 
 ## 📌 Deskripsi Proyek
 Proyek ini mensimulasikan implementasi **DNS Server internal** dengan **Bind9** di dalam **LXD Container**, yang digunakan untuk mengelola **subdomain lokal** aplikasi-aplikasi lab:  
