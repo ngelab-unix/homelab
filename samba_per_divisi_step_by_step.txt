@@ -1,0 +1,284 @@
+Samba — Panduan Lengkap: Instalasi hingga Konfigurasi Per-Divisi (Bahasa Indonesia)
+
+Ringkasan:
+Panduan ini menjelaskan langkah demi langkah instalasi Samba di Debian/Ubuntu, pembuatan grup/divisi, pembuatan user Samba, pengaturan permission (ACL), konfigurasi share per-divisi, testing dari client (Linux/Windows), backup & restore, serta troubleshooting singkat.
+
+Prasyarat:
+- Server Debian/Ubuntu (akses root atau sudo)
+- Jaringan lokal (client Windows/Linux)
+- Contoh IP server: 10.105.28.120 (sesuaikan)
+
+------------------------------------------------------------------------------
+1) UPDATE SISTEM
+sudo apt update && sudo apt upgrade -y
+
+------------------------------------------------------------------------------
+2) INSTALL PAKET SAMBA & UTILITIES
+sudo apt install -y samba smbclient cifs-utils acl
+
+Cek versi Samba:
+smbd --version
+
+------------------------------------------------------------------------------
+3) BIKIN STRUKTUR FOLDER & PERMISSION AWAL
+# Direktori dasar untuk semua share
+sudo mkdir -p /srv/samba
+
+# Buat folder untuk tiap divisi
+sudo mkdir -p /srv/samba/hr
+sudo mkdir -p /srv/samba/finance
+sudo mkdir -p /srv/samba/it
+sudo mkdir -p /srv/samba/marketing
+sudo mkdir -p /srv/samba/public   # opsional: folder umum
+
+# Buat group untuk tiap divisi
+sudo groupadd hr || true
+sudo groupadd finance || true
+sudo groupadd it || true
+sudo groupadd marketing || true
+
+# Set ownership dan permission (setgid agar file baru mewarisi group)
+sudo chown root:hr /srv/samba/hr
+sudo chmod 2770 /srv/samba/hr
+
+sudo chown root:finance /srv/samba/finance
+sudo chmod 2770 /srv/samba/finance
+
+sudo chown root:it /srv/samba/it
+sudo chmod 2770 /srv/samba/it
+
+sudo chown root:marketing /srv/samba/marketing
+sudo chmod 2770 /srv/samba/marketing
+
+# Folder publik, semua orang bisa baca/tulis
+sudo chown nobody:nogroup /srv/samba/public
+sudo chmod 0775 /srv/samba/public
+
+Penjelasan singkat:
+- chmod 2770 -> bit 2 (setgid) membuat file/dir baru mewarisi group folder; 770 = rwx untuk owner & group, no access untuk others.
+- Untuk kontrol ACL lebih granular, gunakan setfacl (lihat bagian ACL di bawah).
+------------------------------------------------------------------------------
+4) BACKUP KONFIGURASI AWAL (safety)
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.orig.$(date +%F)
+sudo mkdir -p /backup/samba
+sudo rsync -a /srv/samba/ /backup/samba/data-$(date +%F)/
+sudo rsync -a /etc/samba/ /backup/samba/etc-samba-$(date +%F)/
+sudo rsync -a /var/lib/samba/private/ /backup/samba/private-$(date +%F)/ || true
+
+------------------------------------------------------------------------------
+5) KONFIGURASI SAMBA (/etc/samba/smb.conf)
+# Backup dulu
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.backup
+
+# Edit /etc/samba/smb.conf dan ubah bagian [global] serta tambahkan share berikut (contoh minimal):
+# (Ganti "interfaces" jika perlu menyesuaikan nama interface di server)
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server %v
+   netbios name = sambaserver
+   security = user
+   map to guest = Bad User
+   interfaces = lo eth0 10.105.28.0/24
+   bind interfaces only = Yes
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   server role = standalone server
+   obey pam restrictions = Yes
+   passdb backend = tdbsam
+   null passwords = no
+
+# Share per-divisi
+[HR]
+   path = /srv/samba/hr
+   browseable = yes
+   read only = no
+   valid users = @hr
+   create mask = 0660
+   directory mask = 2770
+   force group = hr
+   vfs objects = recycle
+   recycle:repository = .recycle/%U
+
+[Finance]
+   path = /srv/samba/finance
+   browseable = yes
+   read only = no
+   valid users = @finance
+   create mask = 0660
+   directory mask = 2770
+   force group = finance
+   vfs objects = recycle
+   recycle:repository = .recycle/%U
+
+[IT]
+   path = /srv/samba/it
+   browseable = yes
+   read only = no
+   valid users = @it
+   create mask = 0660
+   directory mask = 2770
+   force group = it
+   vfs objects = recycle
+   recycle:repository = .recycle/%U
+
+[Marketing]
+   path = /srv/samba/marketing
+   browseable = yes
+   read only = no
+   valid users = @marketing
+   create mask = 0660
+   directory mask = 2770
+   force group = marketing
+   vfs objects = recycle
+   recycle:repository = .recycle/%U
+
+# Share publik
+[Public]
+   path = /srv/samba/public
+   browseable = yes
+   read only = no
+   guest ok = yes
+   force user = nobody
+
+# Simpan file lalu cek sintaks
+sudo testparm
+------------------------------------------------------------------------------
+6) TAMBAH USER LINUX & SAMBA (per-divisi)
+# Contoh menambah user dan masukkan ke group HR
+sudo adduser alice
+sudo usermod -aG hr alice
+sudo smbpasswd -a alice
+sudo smbpasswd -e alice
+
+# Tambah user finance
+sudo adduser bob
+sudo usermod -aG finance bob
+sudo smbpasswd -a bob
+sudo smbpasswd -e bob
+
+# Tambah user IT
+sudo adduser carol
+sudo usermod -aG it carol
+sudo smbpasswd -a carol
+sudo smbpasswd -e carol
+
+# Tambah user Marketing
+sudo adduser dave
+sudo usermod -aG marketing dave
+sudo smbpasswd -a dave
+sudo smbpasswd -e dave
+
+# Verifikasi membership group
+groups alice
+groups bob
+
+# Jika ingin menambahkan banyak user dari file, gunakan loop shell (opsional).
+------------------------------------------------------------------------------
+7) PENGATURAN ACL (opsional, granular)
+# Install ACL jika belum
+sudo apt install -y acl
+
+# Contoh: beri akses khusus pada user tertentu di folder HR
+sudo setfacl -m u:alice:rwx /srv/samba/hr
+# Hapus ACL
+sudo setfacl -x u:alice /srv/samba/hr
+# Tampilkan ACL
+getfacl /srv/samba/hr
+
+------------------------------------------------------------------------------
+8) RESTART SAMBA & STATUS
+sudo systemctl restart smbd nmbd
+sudo systemctl enable smbd nmbd
+sudo systemctl status smbd nmbd --no-pager
+
+# Cek share dari server
+smbclient -L localhost -U%
+# Cek konfigurasi via testparm
+sudo testparm
+
+------------------------------------------------------------------------------
+9) PENGUJIAN DARI CLIENT LINUX
+# Mount share publik (guest)
+sudo mkdir -p /mnt/samba_public
+sudo mount -t cifs //10.105.28.120/Public /mnt/samba_public -o guest,uid=1000
+# Mount private (dengan credentials)
+sudo mkdir -p /mnt/samba_hr
+sudo mount -t cifs //10.105.28.120/HR /mnt/samba_hr -o username=alice,password=PASSWORD_SAMBA,uid=1000
+# Setelah testing, unmount
+sudo umount /mnt/samba_hr
+
+# Alternatif menggunakan smbclient (interactive)
+smbclient //10.105.28.120/HR -U alice
+
+------------------------------------------------------------------------------
+10) PENGUJIAN DARI CLIENT WINDOWS
+- Buka File Explorer → This PC → Map network drive
+- Folder: \10.105.28.120\HR
+- Pilih "Connect using different credentials" -> masukkan user alice dan password Samba
+- Untuk Public: \10.105.28.120\Public (guest access)
+
+------------------------------------------------------------------------------
+11) FIREWALL (ufw contoh)
+# Izinkan Samba (TCP 139,445 dan UDP 137,138)
+sudo ufw allow proto tcp to any port 139,445
+sudo ufw allow proto udp to any port 137,138
+sudo ufw reload
+
+# Atau gunakan profile aplikasi
+sudo ufw allow Samba
+
+------------------------------------------------------------------------------
+12) BACKUP RUTIN & SINKRONISASI KE SERVER LAIN
+# Backup data share
+rsync -a --delete /srv/samba/ user@backup-server:/backup/samba/data/
+
+# Backup konfigurasi & DB samba
+rsync -a /etc/samba/ user@backup-server:/backup/samba/etc/
+rsync -a /var/lib/samba/private/ user@backup-server:/backup/samba/private/
+
+# Cron job contoh (jalankan tiap hari jam 02:00)
+# Edit crontab: crontab -e
+0 2 * * * rsync -a --delete /srv/samba/ user@backup-server:/backup/samba/data/
+0 2 * * * rsync -a /etc/samba/ user@backup-server:/backup/samba/etc/
+0 2 * * * rsync -a /var/lib/samba/private/ user@backup-server:/backup/samba/private/
+
+# Untuk backup yang lebih aman/efisien, pertimbangkan Borg/Restic.
+
+------------------------------------------------------------------------------
+13) RESTORE SINGKAT (jika perlu)
+# Stop layanan Samba sebelum restore file tdb
+sudo systemctl stop smbd nmbd
+
+# Restore file data
+rsync -a backup-server:/backup/samba/data/ /srv/samba/
+
+# Restore config dan private db
+rsync -a backup-server:/backup/samba/etc/ /etc/samba/
+rsync -a backup-server:/backup/samba/private/ /var/lib/samba/private/
+
+# Pastikan ownership & permissions
+sudo chown -R root:hr /srv/samba/hr
+sudo chmod -R 2770 /srv/samba/hr
+# dst untuk folder lain...
+
+# Start layanan
+sudo systemctl start smbd nmbd
+
+------------------------------------------------------------------------------
+14) TROUBLESHOOTING SINGKAT
+- Lihat log Samba:
+  sudo tail -f /var/log/samba/log.smbd
+- Jika permission denied: cek owner/group, cek ACL (getfacl), dan pastikan user termasuk group yang benar.
+- Jika user tidak bisa login: cek smbpasswd dan apakah account diset enable (smbpasswd -e user).
+- Jika share tidak muncul: cek testparm, restart smbd, cek firewall.
+
+------------------------------------------------------------------------------
+15) BEST PRACTICES
+- Gunakan setgid (chmod 2770) untuk mempermudah manajemen group.
+- Gunakan ACL untuk aturan kompleks (per-user-per-mapping).
+- Pisahkan backup data & backup config/tdb supaya mudah restore.
+- Opsi produksi: integrasi dengan Active Directory (Samba AD DC, winbind/sssd).
+- Untuk keamanan: gunakan encryption at rest (disk-level), dan backup terenkripsi.
+
+------------------------------------------------------------------------------
+Selesai — File panduan ini cocok untuk lab dan produksi kecil.

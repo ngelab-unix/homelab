@@ -1,0 +1,191 @@
+Samba — Panduan Instalasi & Konfigurasi Langkah-demi-Langkah (Debian/Ubuntu)
+
+Ringkasan:
+Panduan ini menjelaskan instalasi Samba, membuat share publik dan private, menambah user Samba, setting permission, testing dari Windows/Linux, keamanan dasar, backup & restore, dan troubleshooting singkat.
+
+Prasyarat:
+- Server Debian/Ubuntu (root/sudo)
+- Jaringan lokal (client Windows/Linux)
+- Contoh IP server: 10.105.28.120 (sesuaikan)
+
+------------------------------------------------------------
+1) Update sistem
+sudo apt update && sudo apt upgrade -y
+
+------------------------------------------------------------
+2) Install paket Samba (Debian/Ubuntu)
+sudo apt install -y samba smbclient cifs-utils acl
+
+Perintah pengecekan versi:
+smbd --version
+
+------------------------------------------------------------
+3) Struktur folder & permission contoh
+# Buat folder share publik (guest)
+sudo mkdir -p /srv/samba/public
+sudo chown -R nobody:nogroup /srv/samba/public
+sudo chmod -R 0775 /srv/samba/public
+
+# Buat folder share private (user-based)
+sudo mkdir -p /srv/samba/private
+sudo groupadd sambashare || true
+sudo chown -R root:sambashare /srv/samba/private
+sudo chmod -R 2770 /srv/samba/private
+# Set ACL (opsional, lebih granular)
+sudo apt install -y acl
+sudo setfacl -R -m g:sambashare:rwx /srv/samba/private
+
+------------------------------------------------------------
+4) Backup file konfigurasi smb.conf original
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.orig
+
+------------------------------------------------------------
+5) Contoh konfigurasi /etc/samba/smb.conf (standalone server)
+# Edit /etc/samba/smb.conf dan ganti atau tambahkan bagian berikut:
+
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server %v
+   netbios name = sambaserver
+   security = user
+   map to guest = Bad User
+   interfaces = lo eth0 10.105.28.0/24
+   bind interfaces only = Yes
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   server role = standalone server
+   obey pam restrictions = Yes
+   passdb backend = tdbsam
+
+# Share publik (guest)
+[Public]
+   path = /srv/samba/public
+   browseable = yes
+   read only = no
+   guest ok = yes
+   force user = nobody
+
+# Share private (hanya user yang diizinkan)
+[Private]
+   path = /srv/samba/private
+   browseable = yes
+   read only = no
+   valid users = @sambashare
+   create mask = 0660
+   directory mask = 2770
+   writeable = yes
+
+Simpan file, lalu jalankan pemeriksaan sintaks:
+testparm /etc/samba/smb.conf
+
+------------------------------------------------------------
+6) Tambah user Linux & Samba user
+# Buat user Linux (contoh: budi)
+sudo adduser budi
+
+# Masukkan ke group sambashare agar punya akses ke /srv/samba/private
+sudo usermod -aG sambashare budi
+
+# Buat password Samba (tdbsam) untuk user budi
+sudo smbpasswd -a budi
+# Aktifkan user samba
+sudo smbpasswd -e budi
+
+# Jika ingin membuat user lain: ulangi langkah di atas
+
+------------------------------------------------------------
+7) Restart layanan Samba
+sudo systemctl restart smbd nmbd winbind   # winbind opsional
+sudo systemctl enable smbd nmbd
+
+Cek status:
+sudo systemctl status smbd nmbd --no-pager
+
+------------------------------------------------------------
+8) Tes dari server (lokal)
+# Lihat share yang tersedia
+smbclient -L localhost -U%
+
+# Tes akses ke share publik
+smbclient //localhost/Public -U%
+
+# Tes akses ke share private sebagai user budi
+smbclient //localhost/Private -U budi
+# Masukkan password Samba yang dibuat
+
+------------------------------------------------------------
+9) Konfigurasi Firewall (ufw contoh)
+# Allow Samba (ports 137-139 TCP/UDP, 445 TCP)
+sudo ufw allow proto tcp to any port 139,445
+sudo ufw allow proto udp to any port 137,138
+# atau pakai ufw app
+sudo ufw allow Samba
+sudo ufw reload
+
+------------------------------------------------------------
+10) Mount share di client Linux (cifs-utils)
+# Buat mount point
+sudo mkdir -p /mnt/samba_public
+sudo mkdir -p /mnt/samba_private
+
+# Mount publik (guest)
+sudo mount -t cifs //10.105.28.120/Public /mnt/samba_public -o guest,uid=1000
+
+# Mount private (dengan user)
+sudo mount -t cifs //10.105.28.120/Private /mnt/samba_private -o username=budi,uid=1000
+# akan meminta password
+
+# Untuk auto-mount di /etc/fstab (gunakan credentials file)
+# Buat file credentials
+echo "username=budi" | sudo tee /root/.smbcredentials_budi
+echo "password=PASSWORD_SAMBA" | sudo tee -a /root/.smbcredentials_budi
+sudo chmod 600 /root/.smbcredentials_budi
+
+# Tambahkan fstab
+# //10.105.28.120/Private /mnt/samba_private cifs credentials=/root/.smbcredentials_budi,iocharset=utf8,uid=1000,gid=1000 0 0
+
+------------------------------------------------------------
+11) Integrasi Windows - Map Network Drive
+- Buka File Explorer → This PC → Map network drive
+- Folder: \10.105.28.120\Public  (atau \sambaserver\Private)
+- Pilih "Connect using different credentials" untuk Private -> masukkan user budi dan password Samba
+- Jika DNS/NetBIOS berfungsi, gunakan nama netbios: \sambaserver\Public
+
+------------------------------------------------------------
+12) Recycling / Trash VFS module (opsional)
+Tambahkan di smb.conf pada share untuk menaruh recycle bin:
+vfs objects = recycle
+recycle:repository = .recycle/%U
+recycle:keeptree = yes
+recycle:versions = yes
+recycle:maxsize = 0
+
+Restart smbd setelah konfigurasi
+
+------------------------------------------------------------
+13) Backup konfigurasi & user db Samba
+# Backup smb.conf
+sudo cp -a /etc/samba/smb.conf /backup/samba/smb.conf.$(date +%F)
+# Backup /etc/samba/ dan /var/lib/samba/private
+sudo rsync -a /etc/samba/ /backup/samba/etc-samba-$(date +%F)/
+sudo rsync -a /var/lib/samba/private/ /backup/samba/private-$(date +%F)/
+# Backup data share
+sudo rsync -a /srv/samba/ /backup/samba/data-$(date +%F)/
+
+------------------------------------------------------------
+14) Troubleshooting singkat
+- Cek log Samba:
+  sudo tail -f /var/log/samba/log.smbd
+- Jika permission denied: cek ownership & ACL di server, pastikan user ada di group sambashare
+- Jika user tidak bisa login: pastikan smbpasswd sudah dibuat dan ter-enable
+- Jika share tidak terlihat dari Windows: cek firewall, cek service smbd/nmbd, tes smbclient -L serverip -U%
+
+------------------------------------------------------------
+15) Notes & Best Practices
+- Gunakan ACL (setfacl/getfacl) untuk kontrol permission lebih granular.
+- Untuk environment besar, pertimbangkan Active Directory / Samba AD DC dan winbind/sssd.
+- Jangan taruh file penting tanpa backup teratur; gunakan rsync/Restic/Borg untuk backup ke server lain.
+- Jika pakai SELinux (CentOS/RHEL), ingat setenforce dan chcon -t samba_share_t /path serta setsebool -P samba_enable_home_dirs on
+
+------------------------------------------------------------
+Selesai — Panduan singkat instalasi dan konfigurasi Samba.

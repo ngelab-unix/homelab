@@ -1,0 +1,105 @@
+# 🛠️ Skenario Restore Nextcloud (Disaster Recovery)
+
+Misalnya server Nextcloud lama rusak total, kita punya **backup** berupa:
+1. Folder data Nextcloud → `/var/www/nextcloud/data/`
+2. Database dump → `nextcloud_db.sql`
+3. (Opsional) Konfigurasi Nextcloud → `/var/www/nextcloud/config/config.php`
+
+---
+
+## 🔹 Langkah 1 – Siapkan Server Baru
+- Install OS baru (misalnya Debian/Ubuntu Server).
+- Install paket dasar:
+  sudo apt update
+  sudo apt install -y apache2 mariadb-server libapache2-mod-php \
+    php php-mysql php-xml php-mbstring php-gd php-curl php-zip php-intl unzip
+
+- Buat folder Nextcloud:
+  sudo mkdir -p /var/www/nextcloud
+  sudo chown -R www-data:www-data /var/www/nextcloud
+
+---
+
+## 🔹 Langkah 2 – Restore Folder Data
+- Copy hasil backup folder data ke server baru:
+  rsync -avz backup_user@backupserver:/backup/nextcloud/data/ /var/www/nextcloud/data/
+
+- Pastikan permission:
+  sudo chown -R www-data:www-data /var/www/nextcloud/data
+  sudo chmod -R 750 /var/www/nextcloud/data
+
+---
+
+## 🔹 Langkah 3 – Restore Database
+- Login ke MariaDB/MySQL:
+  sudo mysql -u root -p
+
+- Buat database & user baru:
+  CREATE DATABASE nextcloud;
+  CREATE USER 'ncuser'@'localhost' IDENTIFIED BY 'passwordku';
+  GRANT ALL PRIVILEGES ON nextcloud.* TO 'ncuser'@'localhost';
+  FLUSH PRIVILEGES;
+  EXIT;
+
+- Restore dump:
+  mysql -u ncuser -p nextcloud < nextcloud_db.sql
+
+---
+
+## 🔹 Langkah 4 – Restore Config Nextcloud
+- Copy config.php dari backup:
+  rsync -avz backup_user@backupserver:/backup/nextcloud/config/config.php /var/www/nextcloud/config/
+
+- Pastikan isinya cocok dengan database dan domain baru:
+  'dbhost' => 'localhost',
+  'dbname' => 'nextcloud',
+  'dbuser' => 'ncuser',
+  'dbpassword' => 'passwordku',
+  'trusted_domains' =>
+  array (
+    0 => 'nextcloud.labunix.biz.id',
+  ),
+  'datadirectory' => '/var/www/nextcloud/data',
+
+---
+
+## 🔹 Langkah 5 – Jalankan Web Server
+- Aktifkan site Apache:
+  sudo nano /etc/apache2/sites-available/nextcloud.conf
+
+Isi file:
+  <VirtualHost *:80>
+    DocumentRoot /var/www/nextcloud
+    ServerName nextcloud.labunix.biz.id
+
+    <Directory /var/www/nextcloud/>
+      Options +FollowSymlinks
+      AllowOverride All
+      Require all granted
+    </Directory>
+  </VirtualHost>
+
+- Enable site:
+  sudo a2ensite nextcloud.conf
+  sudo a2enmod rewrite headers env dir mime
+  sudo systemctl reload apache2
+
+---
+
+## 🔹 Langkah 6 – Finishing
+- Jalankan occ repair untuk sinkronisasi file & database:
+  sudo -u www-data php /var/www/nextcloud/occ maintenance:repair
+  sudo -u www-data php /var/www/nextcloud/occ files:scan --all
+
+- Buka di browser:
+  http://nextcloud.labunix.biz.id
+
+- User bisa login dengan akun lama, file mereka muncul kembali.
+
+---
+
+## ✅ Ringkasan
+- File ada di data/ → backup wajib.
+- Database simpan metadata & user → backup wajib.
+- Config → agar domain & DB tetap sinkron.
+- Restore dilakukan dengan copy data + import DB + update config → jalankan Nextcloud normal.

@@ -1,0 +1,58 @@
+# 🔄 Backup & Sinkronisasi Nextcloud ke Server Lain
+
+## 1. Persiapan Server Tujuan
+Pastikan server tujuan bisa diakses melalui SSH.
+Di server Nextcloud jalankan:
+    ssh user@IP_SERVER_TUJUAN
+
+Jika ingin tanpa password:
+    ssh-keygen -t ed25519
+    ssh-copy-id user@IP_SERVER_TUJUAN
+
+---
+
+## 2. Backup Data Nextcloud dengan Rsync
+
+### a. Backup File Data
+    rsync -Aax --delete /var/www/nextcloud/ user@IP_SERVER_TUJUAN:/backup/nextcloud/files_$(date +%F)/
+
+### b. Backup Config
+    rsync -Aax /var/www/nextcloud/config/ user@IP_SERVER_TUJUAN:/backup/nextcloud/config_$(date +%F)/
+
+### c. Backup Database
+    mysqldump -u ncuser -p'password' nextcloud | gzip | ssh user@IP_SERVER_TUJUAN "cat > /backup/nextcloud/db_$(date +%F).sql.gz"
+
+---
+
+## 3. Sinkronisasi Incremental (Hemat Bandwidth)
+Gunakan opsi incremental rsync agar transfer lebih cepat:
+    rsync -Aax --delete --partial --progress /var/www/nextcloud/ user@IP_SERVER_TUJUAN:/backup/nextcloud/latest/
+
+Keterangan opsi:
+- --delete  : hapus file di server tujuan jika sudah dihapus di sumber
+- --partial : melanjutkan transfer jika terputus
+- --progress: tampilkan progres transfer
+
+---
+
+## 4. Automasi dengan Cron
+Edit crontab:
+    crontab -e
+
+Tambahkan baris berikut (backup tiap jam 2 pagi):
+    0 2 * * * rsync -Aax --delete /var/www/nextcloud/ user@IP_SERVER_TUJUAN:/backup/nextcloud/latest/
+    0 2 * * * mysqldump -u ncuser -p'password' nextcloud | gzip | ssh user@IP_SERVER_TUJUAN "cat > /backup/nextcloud/db_$(date +\%F).sql.gz"
+
+---
+
+## 5. Alternatif Lebih Canggih
+Jika ingin backup lebih aman:
+- BorgBackup + borgmatic → enkripsi, deduplikasi, incremental backup
+- Restic → backup ke server remote, S3, Google Drive, dll
+- Syncthing → sinkronisasi real-time antar server
+
+---
+
+📌 Kesimpulan:
+- Untuk lab/test: gunakan rsync + cron (sederhana & cepat)
+- Untuk production: gunakan Borg atau Restic agar lebih aman dan efisien
