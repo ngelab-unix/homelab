@@ -45,28 +45,31 @@ Selain itu, digunakan juga **Nginx Reverse Proxy + SSL/TLS** sebagai pintu masuk
 
 ## 📷 Tampilan DNS Tanpa Reverse Proxy 
 
-| DNS Lookup | Guacamole | Cacti | UniFi |
-|------------|-----------|-------|-------|
-| ![DNS Lookup](/Image/dnslookup.png) | ![Guacamole](/Image/guacamole.png) | ![Cacti](/Image/cacti.png) | ![UniFi](/Image/unifi.png) |
+| DNS Lookup | Guacamole | Cacti | UniFi | Tracert |
+|------------|-----------|-------|-------|---------|
+| ![DNS Lookup](/Image/dnslookup.png) | ![Guacamole](/Image/guacamole.png) | ![Cacti](/Image/cacti.png) | ![UniFi](/Image/unifi.png) |![Tracert](/Image/trace.png) |
 
 ---
 ## 📷 Tampilan DNS Dengan Reverse Proxy + SSL  
 
-| DNS Lookup | Guacamole | Cacti | UniFi |
-|------------|-----------|-------|-------|
+| DNS Lookup | Guacamole | Cacti | UniFi | Tracert |
+|------------|-----------|-------|-------|---------|
 | ![DNS Lookup](/Image/dnslookup.png) | ![Guacamole](/Image/guacamole.png) | ![Cacti](/Image/cacti.png) | ![UniFi](/Image/unifi.png) |
-
+![Tracert](/Image/tracert.png) |
 ---
 
 # 🌐 DNS Ekternal & Cloudflared + SSL/TLS
 ---
 ## 📷 Tampilan DNS & Cloudflared + SSL/TLS  
 
-| DNS Lookup | Guacamole | Cacti | UniFi |
-|------------|-----------|-------|-------|
+| DNS Lookup | Guacamole | Cacti | UniFi | Tracert |
+|------------|-----------|-------|-------|---------|
 | ![DNS Lookup](/Image/dnslookup.png) | ![Guacamole](/Image/guacamole.png) | ![Cacti](/Image/cacti.png) | ![UniFi](/Image/unifi.png) |
-
+![Tracert](/Image/tracert.png) |
 ---
+
+🔗 [cacti](https://cac01.ngelab-unix.biz.id) |
+🔗 [zabbix](https://zabb01.ngelab-unix.biz.id) |
 
 ## 📌 Catatan
 - Semua subdomain diselesaikan oleh **Bind9** (internal DNS server)  
