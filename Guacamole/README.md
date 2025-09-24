@@ -37,7 +37,7 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 📷 Tampilan Guacamole + DNS Eksternal + Cloudflared  
 | Nslookup | Login Page | HTTPS Access | TOTP Auth  | Remote Desktop |
 |----------|------------|--------------|------------|----------------|
-| ![Nslookup](/Image/nslookup.png) | ![Login Page](/Image/guacahttp.png) | ![HTTPS](/Image/guacahttps.png) | ![TOTP](/Image/guacalabtotp.png) | ![RDP](/Image/guacalabrdp.png) |
+| ![Nslookup](/Image/nslookup.png) | ![Login Page](/Image/guacahttsp.png) | ![HTTPS](/Image/guacahttsps.png) | ![TOTP](/Image/guacalabtostp.png) | ![RDP](/Image/guacalabrdps.png) |
 
 
 ## ⚙️ Teknologi yang Digunakan
@@ -49,10 +49,10 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 
 ## 📌 Catatan
 - Tested on Debian 12 LXD Canonical container  
-- Dapat diadaptasi untuk production server (VM / baremetal)  
-- Bisa dikombinasikan dengan **VPN (WireGuard)** atau **Cloudflare Tunnel** untuk keamanan lebih lanjut  
+- Dapat diadaptasi untuk production server (VM / baremetal)    
 
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
 
