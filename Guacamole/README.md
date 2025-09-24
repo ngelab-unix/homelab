@@ -29,10 +29,16 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 
 ---
 
-## 📷 Tampilan Guacamole  
-| Login Page | HTTPS Access | TOTP Auth  | Remote Desktop |
-|------------|--------------|------------|----------------|
-| ![Login Page](/Image/guacahttp.png) | ![HTTPS](/Image/guacahttps.png) | ![TOTP](/Image/guacalabtotp.png) | ![RDP](/Image/guacalabrdp.png) |
+## 📷 Tampilan Guacamole local  
+| Nslookup | Login Page | HTTPS Access | TOTP Auth  | Remote Desktop |
+|----------|------------|--------------|------------|----------------|
+| ![Nslookup](/Image/nslookup.png) | ![Login Page](/Image/guacahttp.png) | ![HTTPS](/Image/guacahttps.png) | ![TOTP](/Image/guacalabtotp.png) | ![RDP](/Image/guacalabrdp.png) |
+
+## 📷 Tampilan Guacamole + DNS Eksternal + Cloudflared  
+| Nslookup | Login Page | HTTPS Access | TOTP Auth  | Remote Desktop |
+|----------|------------|--------------|------------|----------------|
+| ![Nslookup](/Image/nslookup.png) | ![Login Page](/Image/guacahttp.png) | ![HTTPS](/Image/guacahttps.png) | ![TOTP](/Image/guacalabtotp.png) | ![RDP](/Image/guacalabrdp.png) |
+
 
 ## ⚙️ Teknologi yang Digunakan
 - **OS**: Debian 12 (LXD Container)  
@@ -49,3 +55,4 @@ Tujuan utama adalah memberikan solusi *remote desktop/web access* yang mudah, am
 ## 👤 Author
 Aditya Ramadhani  
 🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+
