@@ -60,7 +60,7 @@ Selain itu, digunakan juga **Nginx Reverse Proxy + SSL/TLS** sebagai pintu masuk
 
 # 🌐 DNS Ekternal & Cloudflared + SSL/TLS
 ---
-## 📷 Tampilan DNS Dengan Reverse Proxy + SSL  
+## 📷 Tampilan DNS & Cloudflared + SSL/TLS  
 
 | DNS Lookup | Guacamole | Cacti | UniFi |
 |------------|-----------|-------|-------|
