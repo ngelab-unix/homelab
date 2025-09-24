@@ -58,6 +58,16 @@ Selain itu, digunakan juga **Nginx Reverse Proxy + SSL/TLS** sebagai pintu masuk
 
 ---
 
+# 🌐 DNS Ekternal & Cloudflared + SSL/TLS
+---
+## 📷 Tampilan DNS Dengan Reverse Proxy + SSL  
+
+| DNS Lookup | Guacamole | Cacti | UniFi |
+|------------|-----------|-------|-------|
+| ![DNS Lookup](/Image/dnslookup.png) | ![Guacamole](/Image/guacamole.png) | ![Cacti](/Image/cacti.png) | ![UniFi](/Image/unifi.png) |
+
+---
+
 ## 📌 Catatan
 - Semua subdomain diselesaikan oleh **Bind9** (internal DNS server)  
 - **MikroTik DHCP** memastikan semua klien memakai DNS internal secara otomatis  
