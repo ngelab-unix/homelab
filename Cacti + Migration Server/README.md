@@ -56,7 +56,7 @@ Tujuan utama adalah memastikan data grafik, konfigurasi, serta database **Cacti*
 ## 📌 Catatan
 - Tested on Debian 12 LXD Canonical container  
 - Migrasi diuji antara versi **Cacti 1.2.x → 1.3.x (latest)**  
-- Bisa diintegrasikan dengan **Nginx Load Balancer + Failover** jika jumlah client lebih banyak  
+- Next bisa diintegrasikan dengan **Nginx Load Balancer + Failover dengan 1 Database & 2 Zabbix Server** 
 
 ---
 
