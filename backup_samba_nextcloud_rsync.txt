@@ -1,0 +1,48 @@
+# Step-by-Step Backup Samba & Nextcloud dengan rsync
+
+## 1. Backup Samba
+Misalnya folder Samba ada di `/srv/samba`.
+
+### Backup ke server lain:
+rsync -avz /srv/samba/ backupuser@10.10.10.50:/backup/samba/
+
+### Sinkronisasi (mirror) agar sama persis dengan server backup:
+rsync -avz --delete /srv/samba/ backupuser@10.10.10.50:/srv/samba/
+
+---
+
+## 2. Backup Nextcloud
+
+### 2.1 Aktifkan maintenance mode (supaya data tidak berubah saat backup):
+sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --on
+
+### 2.2 Backup data, config, dan apps Nextcloud:
+rsync -avz /var/www/nextcloud/data/ backupuser@10.10.10.50:/backup/nextcloud/data/
+rsync -avz /var/www/nextcloud/config/ backupuser@10.10.10.50:/backup/nextcloud/config/
+rsync -avz /var/www/nextcloud/apps/ backupuser@10.10.10.50:/backup/nextcloud/apps/
+
+### 2.3 Backup database MariaDB/MySQL:
+mysqldump -u root -p nextcloud > /backup/nextcloud_db.sql
+
+### 2.4 Nonaktifkan maintenance mode setelah backup selesai:
+sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --off
+
+---
+
+## 3. Jadwalkan Backup Otomatis (opsional)
+
+Tambahkan ke cronjob (contoh backup tiap malam jam 1 pagi):
+crontab -e
+
+0 1 * * * rsync -avz /srv/samba/ backupuser@10.10.10.50:/backup/samba/
+0 1 * * * rsync -avz /var/www/nextcloud/data/ backupuser@10.10.10.50:/backup/nextcloud/data/
+0 1 * * * mysqldump -u root -pYOURPASS nextcloud > /backup/nextcloud_db.sql
+
+---
+
+## 4. Catatan Penting
+- Untuk Samba, cukup backup folder share saja.
+- Untuk Nextcloud, WAJIB backup juga database.
+- Gunakan opsi `--delete` di rsync jika ingin server backup identik dengan server utama.
+- Sebaiknya uji restore secara berkala agar yakin backup valid.
+
