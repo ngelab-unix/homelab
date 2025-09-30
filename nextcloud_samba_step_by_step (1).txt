@@ -1,0 +1,195 @@
+Nextcloud + Samba (Samba sebagai External Storage)
+Panduan Langkah-demi-Langkah (Bahasa Indonesia)
+Catatan: Panduan ini tidak membuat home directory untuk user. Folder user ditempatkan di dalam folder divisi (mis. /srv/samba/IT/bob).
+
+--------------------------------------------------------------------
+RINGKASAN SINGKAT
+- Samba = penyimpanan utama (/srv/samba/...)
+- Nextcloud = front-end (web/mobile sync) yang mount Samba via External Storage (SMB/CIFS)
+- Dua pola integrasi Nextcloud <-> Samba:
+  A) User credentials: Nextcloud menggunakan kredensial user untuk mengakses Samba (user Nextcloud harus punya akun Samba / LDAP).
+  B) Global mount: Nextcloud menggunakan satu akun SMB (contoh smbadmin) untuk mount seluruh share; akses dibatasi via Nextcloud (Available for).
+
+--------------------------------------------------------------------
+PRA-SYARAT
+- Samba sudah terpasang, berjalan, dan reachable (contoh IP Samba: 10.105.28.105)
+- Nextcloud sudah terpasang dan dapat diakses (contoh https://cloud.labunix.biz.id)
+- Nextcloud host/container dapat menjangkau Samba (ping, nc/telnet ke port 445)
+- Akses root/sudo pada kedua host
+- Jika ingin SSO: siapkan LDAP/AD (opsional)
+
+--------------------------------------------------------------------
+LANGKAH 1 — SIAPKAN STRUKTUR FOLDER DI SAMBA
+# di Samba server
+sudo mkdir -p /srv/samba/{public,HR,IT,Marketing,Finance}
+
+# misal buat folder user di dalam divisi IT
+sudo mkdir -p /srv/samba/IT/bob
+sudo mkdir -p /srv/samba/IT/adi
+
+# set permission: folder divisi untuk group; folder user privat
+sudo groupadd it || true
+sudo chown root:it /srv/samba/IT
+sudo chmod 2770 /srv/samba/IT        # anggota grup it boleh akses, others tidak
+sudo chown bob:it /srv/samba/IT/bob
+sudo chmod 0700 /srv/samba/IT/bob    # hanya bob yang bisa akses folder pribadinya
+
+# Public folder
+sudo chown nobody:nogroup /srv/samba/public
+sudo chmod 0775 /srv/samba/public
+
+--------------------------------------------------------------------
+LANGKAH 2 — BUAT USER SAMBA TANPA HOME DIRECTORY
+# buat akun sistem tanpa home dan tanpa shell interaktif
+sudo useradd -M -s /usr/sbin/nologin bob
+# set password linux (opsional)
+sudo passwd bob
+
+# tambahkan user ke Samba (tdbsam)
+sudo smbpasswd -a bob
+sudo smbpasswd -e bob
+
+# ulangi untuk user lain (adi, alice, diana, dst)
+# penting: UID/GID pada user UNIX perlu konsisten agar permission filesystem benar
+
+--------------------------------------------------------------------
+LANGKAH 3 — KONFIGURASI SAMBA (smb.conf) - contoh minimal
+# backup config
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.orig
+
+# tambahkan/pastikan potongan ini ada (sesuaikan interface & network)
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server
+   map to guest = Bad User
+   obey pam restrictions = Yes
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   dns proxy = no
+   server min protocol = SMB2
+   unix charset = UTF-8
+   display charset = UTF-8
+
+# shares
+[public]
+   path = /srv/samba/public
+   browseable = yes
+   read only = no
+   guest ok = yes
+   create mask = 0664
+   directory mask = 0775
+
+[IT]
+   path = /srv/samba/IT
+   browseable = yes
+   read only = no
+   valid users = @it
+   create mask = 0660
+   directory mask = 2770
+   force group = it
+
+# optional per-user share (tidak wajib)
+[bob]
+   path = /srv/samba/IT/bob
+   browseable = no
+   read only = no
+   valid users = bob
+   create mask = 0700
+   directory mask = 0700
+
+# cek & restart
+sudo testparm
+sudo systemctl restart smbd nmbd
+
+--------------------------------------------------------------------
+LANGKAH 4 — UJI AKSES SAMBA DARI JARINGAN
+# test dari server lain / Nextcloud host
+smbclient //10.105.28.105/IT -U bob
+# public
+smbclient //10.105.28.105/public -U%
+
+# jika firewall aktif pada Samba server, izinkan akses dari Nextcloud host:
+# contoh dengan ufw (sesuaikan ip Nextcloud)
+sudo ufw allow from 10.105.28.200 to any port 445 proto tcp
+
+--------------------------------------------------------------------
+LANGKAH 5 — SIAPKAN NEXTCLOUD: AKTIFKAN EXTERNAL STORAGE APP
+# jalankan perintah occ untuk enable app (sesuaikan path Nextcloud)
+sudo -u www-data php /var/www/nextcloud/occ app:enable files_external
+
+# atau aktifkan lewat Nextcloud web UI -> Apps -> Disabled -> External storage support -> Enable
+
+--------------------------------------------------------------------
+LANGKAH 6 — KONFIGURASI EXTERNAL STORAGE DI NEXTCLOUD (METODE UI)
+# A) Opsi A: User credentials (Nextcloud menggunakan username/password user)
+1. Login ke Nextcloud sebagai admin -> Settings -> External storages
+2. Add storage -> pilih SMB/CIFS
+3. Isi parameter:
+   - Folder/Label : IT (nama di Nextcloud)
+   - Host         : 10.105.28.105
+   - Share        : IT
+   - Remote subfolder: (kosong atau subfolder)
+   - Domain       : WORKGROUP (opsional)
+   - Authentication : pilih "User session credentials" atau opsi yang menggunakan kredensial user
+   - Available for: pilih All users / specific group (mis. it)
+4. Save. Coba login sebagai user bob -> pergi ke Files -> lihat apakah folder IT ter-mount
+
+# B) Opsi B: Global mount (smbadmin) - recommended bila tidak mau samakan password
+1. Buat akun smbadmin (sistem + samba):
+   sudo useradd -M -s /usr/sbin/nologin smbadmin
+   sudo smbpasswd -a smbadmin
+2. Pastikan smbadmin punya akses baca/tulis ke share (pakai ACL jika perlu):
+   sudo setfacl -m u:smbadmin:rwx /srv/samba/IT
+   sudo setfacl -R -m u:smbadmin:rwx /srv/samba/IT/bob
+3. Di Nextcloud admin -> External storages:
+   - Add storage -> SMB/CIFS
+   - Folder/Label : IT-share
+   - Host : 10.105.28.105
+   - Share: IT
+   - Username: smbadmin
+   - Password: <SMBADMIN_PASS>
+   - Authentication: Username/Password
+   - Available for: pilih target users/groups (mis. group 'it' atau specific users)
+4. Save. Nextcloud akan mount share IT untuk user yang dipilih.
+
+--------------------------------------------------------------------
+LANGKAH 7 — KONFIGURASI PERMISSIONS & PERSISTENSI
+- Jika gunakan Opsi A (user credentials): pastikan ownership & permission folder user:
+  sudo chown bob:it /srv/samba/IT/bob
+  sudo chmod 0700 /srv/samba/IT/bob
+
+- Jika gunakan Opsi B (global smbadmin):
+  - smbadmin harus punya akses ke folder user (setfacl atau tambahkan smbadmin ke group it)
+  - Perlu pertimbangkan audit & ownership (semua aksi via smbadmin di Samba akan muncul sebagai smbadmin)
+
+--------------------------------------------------------------------
+LANGKAH 8 — TESTING PENUH
+1. Login Nextcloud sebagai user bob
+   - Cek Files -> mount IT / IT-share muncul?
+   - Upload file lewat Nextcloud -> cek muncul di Samba: ls -la /srv/samba/IT/bob
+2. Upload file lewat SMB (Windows Explorer) -> cek Nextcloud menampilkan file
+   - Jika tidak muncul, jalankan rescan di Nextcloud:
+     sudo -u www-data php /var/www/nextcloud/occ files:scan --all
+   - Atau untuk user tertentu:
+     sudo -u www-data php /var/www/nextcloud/occ files:scan --path="/bob/files"
+
+--------------------------------------------------------------------
+LANGKAH 9 — TROUBLESHOOTING UMUM
+- Permission denied: cek filesystem owner/group, cek ACL (getfacl), cek Samba logs (/var/log/samba/) dan Nextcloud logs (/var/www/nextcloud/data/nextcloud.log)
+- Koneksi gagal: cek jaringan dan firewall, telnet 10.105.28.105 445
+- Kredensial tidak cocok untuk Opsi A: pastikan username/password Nextcloud sama dengan Samba, atau gunakan LDAP
+- Performance: gunakan caching Nextcloud (Redis/APCu) untuk metadata; pastikan Samba storage performa disk & network baik
+- Jika muncul file tapi tidak bisa di-download: cek permission file dan SELinux/AppArmor (jika ada)
+
+--------------------------------------------------------------------
+LANGKAH 10 — PRAKTIK KEAMANAN & REKOMENDASI
+- Jangan ekspos SMB ke internet; letakkan Samba di jaringan internal (lxbr0)
+- Lindungi Nextcloud dengan HTTPS (Let's Encrypt atau Cloudflare Tunnel)
+- Pertimbangkan LDAP/AD untuk manajemen user terpusat
+- Backup rutin /srv/samba/ dan database Nextcloud
+- Aktifkan auditing di Samba (vfs_full_audit) jika perlu pencatatan user
+- Jika pakai smbadmin global: gunakan akses terbatasi dan auditing
+
+--------------------------------------------------------------------
+PENUTUP
+Dengan langkah ini, Nextcloud akan berfungsi sebagai antarmuka web/mobile untuk file yang disimpan di Samba. Pilih pola integrasi (A atau B) sesuai kebutuhan: A = autentikasi per-user (lebih akurat untuk audit), B = administrasi lebih mudah (kredensial terpusat).
