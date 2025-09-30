@@ -1,0 +1,136 @@
+# Step by Step Konfigurasi Samba dengan Recycle Bin Per User
+
+## 1. Instalasi Samba
+```
+sudo apt update
+sudo apt install -y samba
+```
+
+## 2. Buat Struktur Direktori
+```
+sudo mkdir -p /srv/samba/it/private/bob
+sudo mkdir -p /srv/samba/it/private/alice
+sudo mkdir -p /srv/samba/marketing/private/adi
+sudo mkdir -p /srv/samba/hr/private/dina
+sudo mkdir -p /srv/samba/finance/private/eko
+sudo mkdir -p /srv/samba/public
+```
+
+## 3. Buat Group untuk Divisi
+```
+sudo groupadd it
+sudo groupadd marketing
+sudo groupadd hr
+sudo groupadd finance
+```
+
+## 4. Tambahkan User ke Group Sesuai Divisi
+```
+sudo useradd -m -G it bob
+sudo useradd -m -G it alice
+sudo useradd -m -G marketing adi
+sudo useradd -m -G hr dina
+sudo useradd -m -G finance eko
+
+# Set password Samba
+sudo smbpasswd -a bob
+sudo smbpasswd -a alice
+sudo smbpasswd -a adi
+sudo smbpasswd -a dina
+sudo smbpasswd -a eko
+```
+
+## 5. Set Ownership dan Permission Folder
+```
+sudo chown -R root:it /srv/samba/it
+sudo chmod -R 770 /srv/samba/it
+
+sudo chown -R root:marketing /srv/samba/marketing
+sudo chmod -R 770 /srv/samba/marketing
+
+sudo chown -R root:hr /srv/samba/hr
+sudo chmod -R 770 /srv/samba/hr
+
+sudo chown -R root:finance /srv/samba/finance
+sudo chmod -R 770 /srv/samba/finance
+
+sudo chmod -R 777 /srv/samba/public
+```
+
+## 6. Edit Konfigurasi Samba
+Edit file `/etc/samba/smb.conf` dan tambahkan konfigurasi berikut:
+
+```
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server
+   security = user
+   map to guest = bad user
+   dns proxy = no
+
+   log file = /var/log/samba/%m.log
+   max log size = 1000
+
+   vfs objects = recycle
+   recycle:keeptree = yes
+   recycle:versions = yes
+   recycle:touch = yes
+   recycle:maxsize = 0
+   recycle:exclude = *.tmp, *.temp, *.o, *.obj, ~*
+   recycle:exclude_dir = /tmp, /temp, /cache
+
+[IT]
+   path = /srv/samba/it
+   browsable = yes
+   writable = yes
+   valid users = @it
+   create mask = 0660
+   directory mask = 0770
+   recycle:repository = .recycle/%U
+
+[Marketing]
+   path = /srv/samba/marketing
+   browsable = yes
+   writable = yes
+   valid users = @marketing
+   create mask = 0660
+   directory mask = 0770
+   recycle:repository = .recycle/%U
+
+[HR]
+   path = /srv/samba/hr
+   browsable = yes
+   writable = yes
+   valid users = @hr
+   create mask = 0660
+   directory mask = 0770
+   recycle:repository = .recycle/%U
+
+[Finance]
+   path = /srv/samba/finance
+   browsable = yes
+   writable = yes
+   valid users = @finance
+   create mask = 0660
+   directory mask = 0770
+   recycle:repository = .recycle/%U
+
+[Public]
+   path = /srv/samba/public
+   browsable = yes
+   writable = yes
+   guest ok = yes
+   create mask = 0664
+   directory mask = 0775
+   recycle:repository = .recycle/%U
+```
+
+## 7. Restart Samba Service
+```
+sudo systemctl restart smbd nmbd
+```
+
+## 8. Uji Akses dari Client
+- Map network drive ke `\\server-ip\IT` atau share lain sesuai divisi.
+- Login dengan user yang sudah dibuat.
+- Coba hapus file, lalu cek di folder `.recycle/<username>` masing-masing.
