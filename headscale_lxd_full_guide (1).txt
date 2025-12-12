@@ -1,0 +1,67 @@
+Panduan Lengkap Install Headscale (Tailscale Server) di LXD Container
+
+1. Buat Container LXD
+   lxc launch images:ubuntu/22.04 headscale
+   lxc exec headscale -- bash
+
+2. Update Sistem
+   apt update && apt upgrade -y
+   apt install -y curl wget nano sqlite3 ca-certificates
+
+3. Install Headscale
+   HEADSCALE_VERSION="1.9.0"
+   HEADSCALE_ARCH="amd64"  # atau arm64 jika Orange Pi
+   wget --output-document=headscale.deb \
+   "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
+
+   apt install -y ./headscale.deb
+   mkdir -p /var/lib/headscale
+   chown headscale:headscale /var/lib/headscale
+
+4. Konfigurasi Headscale
+   nano /etc/headscale/config.yaml
+   (isi contoh)
+   server_url: "https://headscale.example.com"
+   listen_addr: "0.0.0.0:8080"
+   log_level: info
+   db_type: sqlite3
+   db_path: /var/lib/headscale/headscale.db
+   private_key_path: /etc/headscale/private.key
+   derp:
+     server:
+       enabled: true
+
+5. Instal Caddy untuk TLS
+   apt install -y debian-keyring debian-archive-keyring apt-transport-https
+   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | apt-key add -
+   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy.list
+   apt update && apt install -y caddy
+
+   nano /etc/caddy/Caddyfile
+   headscale.example.com {
+       reverse_proxy localhost:8080
+       tls you@email.com
+   }
+
+   systemctl restart caddy
+
+6. Jalankan Headscale
+   systemctl enable --now headscale
+   systemctl status headscale
+
+7. Buat User & Preauth Key
+   headscale users create admin
+   headscale preauthkeys create --user admin --reusable --expiration 720h
+
+8. Hubungkan Client
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up --login-server=https://headscale.example.com --authkey=tskey-xxxxx
+
+9. Hubungkan Container Lain
+   lxc exec web -- bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   tailscale up --login-server=https://headscale.example.com --authkey=tskey-xxxxx
+
+10. Advertise Subnet (opsional)
+    tailscale up --advertise-routes=192.168.1.0/24
+    headscale routes enable -r <id>

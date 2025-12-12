@@ -1,0 +1,248 @@
+Samba Recycle Manager - Complete Setup Guide
+===========================================
+
+Goal:
+- Automatically clear recycle bin by retention period
+- Send email notification when files are cleaned
+- Log who deleted files (Samba audit)
+- Detect recycle bin size and auto-clear if storage almost full
+- Provide cron entries and troubleshooting tips
+
+Assumptions:
+- Samba share path: /data/share
+- Recycle bin location: /data/share/.recycle/%U  (per-user)
+- System user that runs scripts has permission to read logs and .recycle folder
+- mail command available (postfix/sendmail or ssmtp configured)
+- Log files: Samba audit logs at /var/log/samba/audit.log
+- Adjust paths, email, retention days, and thresholds to your environment
+
+---
+1) Samba share configuration (smb.conf)
+--------------------------------------
+Add/modify your share section in /etc/samba/smb.conf (global and share-level settings):
+(Insert under [global] if not present)
+
+# --- enable full audit and recycle VFS ---
+[vfs objects]
+   # No global VFS list here; enable per-share below
+
+# Example share section
+[share]
+   path = /data/share
+   read only = no
+   browsable = yes
+   vfs objects = recycle full_audit
+   recycle:repository = .recycle/%U
+   recycle:keeptree = yes
+   recycle:versions = yes
+   recycle:maxsize = 0
+   recycle:exclude = *.tmp,*.partial,~$*
+   recycle:exclude_dir = tmp
+   recycle:touch = yes
+
+   # full_audit parameters (logs username|client_ip|service)
+   full_audit:prefix = %u|%I|%S
+   full_audit:success = mkdir rmdir unlink rename write pwrite setattr
+   full_audit:failure = none
+   full_audit:facility = LOCAL7
+   full_audit:priority = NOTICE
+
+Notes:
+- After editing smb.conf, restart Samba: sudo systemctl restart smbd nmbd (or smbd only)
+- Ensure /data/share/.recycle exists and permissions set:
+    sudo mkdir -p /data/share/.recycle
+    sudo chown -R root:sambashare /data/share/.recycle
+    sudo chmod -R 2770 /data/share/.recycle
+
+---
+2) Configure system logging for Samba audit (rsyslog)
+----------------------------------------------------
+Create a file /etc/rsyslog.d/30-samba-audit.conf with contents:
+local7.*    /var/log/samba/audit.log
+
+Then restart rsyslog:
+sudo systemctl restart rsyslog
+
+This sends Samba full_audit output to /var/log/samba/audit.log.
+
+---
+3) Install mail tools (if not present)
+--------------------------------------
+Example (Debian/Ubuntu):
+sudo apt update
+sudo apt install -y mailutils postfix
+
+During postfix install, choose 'Internet Site' and set system mail name.
+Test email: echo "test" | mail -s "test" youremail@domain.com
+
+---
+4) Recycle Manager Script
+-------------------------
+Create script: /usr/local/bin/recycle-manager.sh
+Make executable (chmod +x /usr/local/bin/recycle-manager.sh)
+
+Script content (customize variables at top):
+---------------------------------------------
+#!/bin/bash
+# recycle-manager.sh
+# Purpose: clean recycle bin by retention, log deleted files, email report,
+# detect recycle bin disk usage and auto-clear if needed.
+# Requires: find, df, mail, awk, date, logger
+
+### CONFIGURE HERE ###
+RECYCLE_ROOT="/data/share/.recycle"   # path to recycle root (contains per-user folders)
+AUDIT_LOG="/var/log/samba/audit.log"  # samba audit log
+RETENTION_DAYS=30                     # days to keep in recycle
+MAX_DISK_PERCENT=90                   # if filesystem percent usage >= this, trigger auto-clear
+ADMIN_EMAIL="youremail@domain.com"    # admin who will receive reports
+LOG_FILE="/var/log/recycle-manager.log"
+TMP_REPORT="/tmp/recycle-report-$(date +%Y%m%d-%H%M%S).txt"
+######################
+
+echo "Recycle Manager Report - $(date)" > "$TMP_REPORT"
+echo "Recycle root: $RECYCLE_ROOT" >> "$TMP_REPORT"
+echo "" >> "$TMP_REPORT"
+
+# 1) List deletions detected since last run (using audit log)
+echo "Recent deletions (from Samba audit log):" >> "$TMP_REPORT"
+# Extract unlink and rmdir events with username and filename (last 24 hours)
+grep -i -E "unlink|rmdir|rename" "$AUDIT_LOG" | tail -n 200 >> "$TMP_REPORT" 2>/dev/null || true
+echo "" >> "$TMP_REPORT"
+
+# 2) Files older than retention -> delete and record what removed
+echo "Files older than $RETENTION_DAYS days (deleted):" >> "$TMP_REPORT"
+# Find files and move names to report before deletion
+find "$RECYCLE_ROOT" -type f -mtime +"$RETENTION_DAYS" -print > /tmp/recycle-old-files.txt
+if [ -s /tmp/recycle-old-files.txt ]; then
+    while IFS= read -r file; do
+        echo "Deleting: $file" >> "$TMP_REPORT"
+        echo "$(date +%F_%T) DEL $file" >> "$LOG_FILE"
+        rm -f "$file"
+    done < /tmp/recycle-old-files.txt
+else
+    echo "None" >> "$TMP_REPORT"
+fi
+rm -f /tmp/recycle-old-files.txt
+echo "" >> "$TMP_REPORT"
+
+# 3) Check filesystem utilization for mount containing RECYCLE_ROOT
+FS_LINE=$(df -P "$RECYCLE_ROOT" | awk 'NR==2 {print $5 " " $6}')
+FS_PERCENT=$(echo "$FS_LINE" | awk '{print $1}' | sed 's/%//')
+FS_MOUNTPOINT=$(echo "$FS_LINE" | awk '{print $2}')
+echo "Filesystem usage for $RECYCLE_ROOT: $FS_PERCENT% on $FS_MOUNTPOINT" >> "$TMP_REPORT"
+
+# 4) Auto-clear if disk usage high
+if [ "$FS_PERCENT" -ge "$MAX_DISK_PERCENT" ]; then
+    echo "" >> "$TMP_REPORT"
+    echo "WARNING: filesystem usage >= $MAX_DISK_PERCENT%. Auto-clearing oldest files until usage < $MAX_DISK_PERCENT%." >> "$TMP_REPORT"
+    # Delete oldest files first until usage below threshold
+    while [ "$(df -P "$RECYCLE_ROOT" | awk 'NR==2 {print $5}' | sed 's/%//')" -ge "$MAX_DISK_PERCENT" ]; do
+        OLDEST=$(find "$RECYCLE_ROOT" -type f -printf '%T+ %p
+' | sort | head -n 1 | awk '{$1=""; print substr($0,2)}')
+        if [ -z "$OLDEST" ]; then
+            echo "No more files to delete." >> "$TMP_REPORT"
+            break
+        fi
+        echo "$(date +%F_%T) AUTO_DEL $OLDEST" >> "$LOG_FILE"
+        echo "Auto-deleting $OLDEST" >> "$TMP_REPORT"
+        rm -f "$OLDEST"
+        sleep 1
+    done
+fi
+
+echo "" >> "$TMP_REPORT"
+
+# 5) Recalculate recycle folder size and include in report
+echo "Recycle root sizes (per-user):" >> "$TMP_REPORT"
+du -sh "$RECYCLE_ROOT"/* 2>/dev/null | sort -h >> "$TMP_REPORT"
+
+echo "" >> "$TMP_REPORT"
+
+# 6) Send email report
+cat "$TMP_REPORT" | mail -s "Recycle Manager Report - $(hostname) - $(date +%F)" "$ADMIN_EMAIL"
+
+# 7) Append to syslog for quick trace
+logger -t recycle-manager "Recycle cleanup run, report mailed to $ADMIN_EMAIL"
+
+# 8) tidy up temp
+rm -f "$TMP_REPORT"
+
+exit 0
+---------------------------------------------
+
+5) Make the script executable and test manually
+----------------------------------------------
+sudo chmod +x /usr/local/bin/recycle-manager.sh
+sudo /usr/local/bin/recycle-manager.sh
+
+Check /var/log/recycle-manager.log and your email for output
+
+---
+6) Cron job scheduling
+----------------------
+Edit root crontab:
+sudo crontab -e
+
+Add jobs (example):
+# Run recycle manager daily at 02:00
+0 2 * * * /usr/local/bin/recycle-manager.sh
+
+# Optional: a lightweight audit scan every hour (append recent deletions only):
+0 * * * * /usr/local/bin/recycle-manager.sh >/dev/null 2>&1
+
+---
+7) Samba audit log rotation
+----------------------------
+Create /etc/logrotate.d/samba-audit with:
+/var/log/samba/audit.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    create 0640 root adm
+    sharedscripts
+    postrotate
+        /bin/kill -HUP $(cat /var/run/rsyslogd.pid 2>/dev/null || true) || true
+    endscript
+}
+
+---
+8) Notes on "who deleted file" tracking
+---------------------------------------
+- The script extracts recent unlink/rmdir/rename entries from Samba audit log.
+- Samba full_audit outputs lines with prefix: %u|%I|%S (user|clientIP|service) then the operation and filename.
+- Example audit log entry:
+   alice|192.168.1.10|share unlink filename.txt
+- To see who deleted, parse /var/log/samba/audit.log (the script already includes a recent snapshot in the email)
+- If you need per-file deletion alerts in real-time, you can expand the script to use inotifywait watching the .recycle directories and trigger immediate emails on new entries.
+
+---
+9) Optional: Immediate email on every deletion (inotify approach)
+----------------------------------------------------------------
+Install inotify-tools: sudo apt install inotify-tools
+Create watcher script /usr/local/bin/recycle-watcher.sh:
+#!/bin/bash
+WATCH_DIR="/data/share/.recycle"
+ADMIN="youremail@domain.com"
+inotifywait -m -r -e moved_to,create --format '%w%f %e' "$WATCH_DIR" | while read FILE EVENT; do
+    echo "File detected in recycle: $FILE - Event: $EVENT" | mail -s "Recycle bin file moved: $FILE" "$ADMIN"
+done
+Run this via systemd service or screen/tmux to keep running.
+
+---
+10) Troubleshooting
+-------------------
+- No emails? Ensure mailutils/postfix installed and can send mail. Check /var/log/mail.log
+- No audit entries? Confirm smb.conf has 'full_audit' and rsyslog config exists and rsyslog restarted.
+- Permissions? Ensure the script user can read /var/log/samba/audit.log and /data/share/.recycle
+- SELinux? If enabled, adjust policies or run in permissive mode while testing.
+
+---
+11) Security & cleanup policy
+-----------------------------
+- Keep backup of important deleted files before auto-cleaning if compliance requires.
+- Keep longer retention for archive users; shorter retention for temp shares.
+- Regularly monitor /var/log/recycle-manager.log for anomalies.
+
+--- End of Document ---

@@ -1,0 +1,58 @@
+Panduan Konfigurasi Samba + Quota (Bind-Mount) pada LXD Container
+=============================================================
+
+1. Siapkan Direktori Data di Host LXD
+-------------------------------------
+mkdir -p /data-samba
+chmod 777 /data-samba
+
+2. Tambahkan Bind-Mount ke Container
+------------------------------------
+lxc config device add samba-server sambadir disk source=/data-samba path=/srv/samba
+
+3. Masuk ke Container
+---------------------
+lxc exec samba-server -- bash
+
+4. Instal Samba
+---------------
+apt update
+apt install -y samba
+
+5. Konfigurasi Samba
+--------------------
+nano /etc/samba/smb.conf
+
+Tambahkan bagian berikut:
+[share]
+   path = /srv/samba
+   read only = no
+   browseable = yes
+   create mask = 0777
+   directory mask = 0777
+
+6. Restart Samba
+----------------
+systemctl restart smbd
+
+7. Buat User Samba
+------------------
+adduser andi
+smbpasswd -a andi
+
+8. Optional: Quota via Host (ZFS/Btrfs)
+---------------------------------------
+Jika menggunakan ZFS:
+zfs set projectquota=20G default /data-samba
+
+Jika menggunakan Btrfs:
+btrfs qgroup limit 20G /data-samba
+
+9. Cek Status Samba
+-------------------
+systemctl status smbd
+
+10. Akses dari Windows
+----------------------
+\<IP-CONTAINER>\share
+Login dengan user Samba yang dibuat.

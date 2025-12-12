@@ -1,0 +1,82 @@
+PANDUAN INSTALL ODOO DI LXD UBUNTU CONTAINER
+
+1. Buat Container LXD Ubuntu 22.04 / 24.04
+
+lxc launch images:ubuntu/22.04 odoo # atau lxc launch
+images:ubuntu/24.04 odoo
+
+Masuk container: lxc exec odoo – bash
+
+2. Update & Install Dependency
+
+apt update && apt upgrade -y apt install -y git python3 python3-pip
+python3-dev build-essential libxml2-dev libxslt1-dev libldap2-dev
+libsasl2-dev libtiff5-dev libjpeg8-dev libopenjp2-7-dev zlib1g-dev
+libfreetype6-dev liblcms2-dev libwebp-dev libharfbuzz-dev libfribidi-dev
+libxcb1-dev libpq-dev wkhtmltopdf
+
+3. Install PostgreSQL (di container)
+
+apt install -y postgresql sudo -u postgres createuser -s odoo
+
+4. Buat User Sistem Odoo
+
+adduser –system –home=/opt/odoo –group odoo
+
+5. Download Source Odoo
+
+Odoo 17
+
+git clone https://github.com/odoo/odoo.git –branch 17.0 –depth 1
+/opt/odoo/odoo
+
+Odoo 16 (opsional)
+
+git clone https://github.com/odoo/odoo.git –branch 16.0 –depth 1
+/opt/odoo/odoo
+
+6. Install Python Module Requirement
+
+pip3 install -r /opt/odoo/odoo/requirements.txt
+
+7. Buat Directory addons
+
+mkdir /opt/odoo/custom_addons chown -R odoo:odoo /opt/odoo
+
+8. Buat Config File Odoo
+
+nano /etc/odoo.conf
+
+Isi file: [options] admin_passwd = admin123 db_host = False db_port =
+False db_user = odoo db_password = False addons_path =
+/opt/odoo/odoo/addons,/opt/odoo/custom_addons xmlrpc_port = 8069 logfile
+= /var/log/odoo.log
+
+9. Buat Service Systemd
+
+nano /etc/systemd/system/odoo.service
+
+Isi file: [Unit] Description=Odoo ERP After=network.target
+postgresql.service
+
+[Service] Type=simple SyslogIdentifier=odoo PermissionsStartOnly=true
+User=odoo Group=odoo ExecStart=/usr/bin/python3 /opt/odoo/odoo/odoo-bin
+-c /etc/odoo.conf Restart=always
+
+[Install] WantedBy=multi-user.target
+
+Reload & start: systemctl daemon-reload systemctl enable –now odoo
+
+10. Cek Status Odoo
+
+systemctl status odoo
+
+Jika berjalan, akses: http://IP_LXD_CONTAINER:8069
+
+11. Setting IP Static LXD (opsional)
+
+lxc config device set odoo eth0 ipv4.address 10.0.3.50
+
+Akses: http://10.0.3.50:8069
+
+SELESAI — Odoo sudah berjalan di LXD.
