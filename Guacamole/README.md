@@ -32,7 +32,7 @@ Copy code
 
 ---
 
-## 📷 Tampilan Lab (Contoh)
+## 📷 Tampilan Lab 
 | Fitur             | Screenshot Placeholder |
 |------------------|---------------------|
 | Nslookup          | ![Nslookup](path/to/image.png) |
@@ -66,3 +66,4 @@ Copy code
 🔗 [LinkedIn](https://www.linkedin.com/in/aditya-ramadhani) | 📧 aditya@example.com  
 
 ---
+
