@@ -1,36 +1,39 @@
-# 📂 Samba File Server – Multi Divisi & User Private Lab
+# Samba File Server – Multi Divisi & User Private Lab
 
 ## 📌 Deskripsi Proyek
 Proyek ini mensimulasikan **file server berbasis Samba** pada lingkungan **LXD Canonical**.  
-Struktur dibangun untuk mendukung **folder bersama per divisi** sekaligus **folder privat per user**.  
+Struktur dibangun untuk mendukung **folder bersama per divisi** sekaligus **folder privat per user**.
 
-Dengan desain ini:
-- Divisi (HR, IT, Marketing, Finance) memiliki folder bersama.
-- Setiap user dalam divisi memiliki folder pribadi yang tidak bisa diakses user lain.
-- Tersedia folder **Public** yang bisa diakses semua divisi.
+Dengan desain ini:  
+- Divisi (HR, IT, Marketing, Finance) memiliki folder bersama.  
+- Setiap user dalam divisi memiliki folder pribadi yang tidak bisa diakses user lain.  
+- Tersedia folder **Public** yang bisa diakses semua divisi.  
 
 ---
 
 ## 🏗️ Topologi Jaringan
 
-| Komponen             | IP Address     | Deskripsi                          |
-|----------------------|---------------|------------------------------------|
-| **Mikrotik Router**  | 192.168.1.1   | Gateway & DHCP Server              |
-| **Laptop/PC Client** | 192.168.1.251 | Akses user ke file server          |
-| **LXD Host**         | 192.168.1.250 | Canonical LXD Hypervisor           |
-| **lxbr0**            | 10.105.28.1   | Bridge network isolation           |
-| **Samba Server**     | 10.105.28.105 | File server untuk multi divisi     |
+| Komponen          | IP Address       | Deskripsi                                   |
+|------------------|----------------|--------------------------------------------|
+| Mikrotik Router   | 192.168.1.1     | Gateway & DHCP Server                        |
+| Laptop/PC Client  | 192.168.1.251   | Akses user ke file server                    |
+| LXD Host          | 192.168.1.250   | Canonical LXD Hypervisor                     |
+| lxbr0             | 10.105.28.1     | Bridge network isolation                     |
+| Samba Server      | 10.105.28.105   | File server untuk multi divisi               |
 
-📊 **Diagram Topologi**  
-Samba berjalan di dalam **LXC container** dengan network bridge `lxbr0` yang terhubung ke LAN melalui Mikrotik.  
+### 📊 Diagram Topologi
+[ Diagram placeholder – Samba berjalan di LXC container, bridge lxbr0, terhubung ke LAN via Mikrotik ]
+
+yaml
+Copy code
 
 ---
 
 ## 🎯 Tujuan
-- ✅ Membuat **file server per divisi** (HR, IT, Marketing, Finance).  
-- ✅ Memberikan **akses private per user** di dalam divisi.  
-- ✅ Menyediakan **folder public** untuk semua divisi.  
-- ✅ Mengisolasi server menggunakan **LXD container**.  
+- Membuat **file server per divisi** (HR, IT, Marketing, Finance)  
+- Memberikan **akses private per user** di dalam divisi  
+- Menyediakan **folder public** untuk semua divisi  
+- Mengisolasi server menggunakan **LXD container**  
 
 ---
 
@@ -42,18 +45,42 @@ Samba berjalan di dalam **LXC container** dengan network bridge `lxbr0` yang ter
 
 ---
 
-## 📂 Struktur Folder
+## 📂 Struktur Folder (Contoh)
+/srv/samba/
+├── Public/
+├── HR/
+│ ├── user1/
+│ └── user2/
+├── IT/
+│ ├── user3/
+│ └── user4/
+├── Marketing/
+│ ├── user5/
+│ └── user6/
+├── Finance/
+│ ├── user7/
+│ └── user8/
+
+yaml
+Copy code
 
 ---
 
 ## 📌 Catatan
-- Folder **divisi** hanya bisa diakses anggota divisi.  
-- Folder **user** hanya bisa diakses user tersebut + admin.  
-- Folder **public** terbuka untuk semua user.  
-- Pengaturan hak akses menggunakan kombinasi **group** dan **chmod**.  
+- Folder divisi hanya bisa diakses anggota divisi  
+- Folder user hanya bisa diakses user tersebut + admin  
+- Folder public terbuka untuk semua user  
+- Pengaturan hak akses menggunakan kombinasi **group** dan **chmod**  
 
 ---
 
 ## 👤 Author
-Aditya Ramadhani  
-🔗 [LinkedIn](https://linkedin.com/in/username) | 📧 [Email](mailto:ramadhaniaditya19@gmail.com)  
+**Aditya Ramadhani**  
+🔗 [LinkedIn](https://www.linkedin.com/in/aditya-ramadhani) | 📧 aditya@example.com  
+
+---
+
+## 📝 License (Optional)
+```text
+Copyright (c) 2025 Aditya Ramadhani
+Portofolio ini hanya untuk tujuan demonstrasi dan evaluasi.
