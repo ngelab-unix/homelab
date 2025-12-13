@@ -34,7 +34,7 @@ Copy code
 
 ---
 
-## 📷 Tampilan Lab (Contoh)
+## 📷 Tampilan Lab 
 | Fitur             | Screenshot Placeholder |
 |------------------|---------------------|
 | Login Page        | ![Login](path/to/image.png) |
@@ -51,7 +51,7 @@ Copy code
 - **OS**: Debian 12 (LXD Container)  
 - **Cloud Storage**: Nextcloud  
 - **Database**: MariaDB/PostgreSQL  
-- **Web Server**: Nginx + PHP-FPM  
+- **Web Server**: apache + PHP-FPM  
 - **Virtualization**: Canonical LXD  
 - **SSL/TLS**: Optional via Let's Encrypt / self-signed  
 
@@ -74,3 +74,4 @@ Copy code
 ```text
 Copyright (c) 2025 Aditya Ramadhani
 Portofolio ini hanya untuk tujuan demonstrasi dan evaluasi.
+
