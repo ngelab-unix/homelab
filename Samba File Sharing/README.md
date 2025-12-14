@@ -47,23 +47,22 @@ Copy code
 
 ## 📂 Struktur Folder (Contoh)
 /srv/samba/
-├── Public/
 ├── HR/
-│ ├── user1/
-│ └── user2/
+│ ├── public
+  ├── private   │── user1/
+                └── user2/
 ├── IT/
-│ ├── user3/
-│ └── user4/
+│ ├── public
+  ├── private   │── user3/
+                └── user4/
 ├── Marketing/
-│ ├── user5/
-│ └── user6/
+│ ├── public
+  ├── private   │── user5/
+                └── user6/
 ├── Finance/
-│ ├── user7/
-│ └── user8/
-
-yaml
-Copy code
-
+│ ├── public
+  ├── private   │── user5/
+                └── user6/
 ---
 
 ## 📌 Catatan
@@ -80,7 +79,8 @@ Copy code
 
 ---
 
-## 📝 License (Optional)
+## 📝 License 
 ```text
 Copyright (c) 2025 Aditya Ramadhani
 Portofolio ini hanya untuk tujuan demonstrasi dan evaluasi.
+
