@@ -1,0 +1,588 @@
+
+
+
+
+
+
+Siap 👍
+Saya buatkan QoS Mikrotik KHUSUS untuk Nextcloud (100 user, Cloudflared / langsung), realistis & mudah diterapkan.
+
+Saya beri 2 metode:
+1️⃣ Simple Queue (PALING MUDAH & STABIL) ✅
+2️⃣ Queue Tree (LANJUTAN, lebih presisi)
+
+Anda bisa pilih salah satu.
+
+🎯 TARGET QoS
+
+Asumsi internet:
+
+Download 100 Mbps
+
+Upload 50 Mbps
+
+Nextcloud prioritas tinggi
+
+Tetap adil untuk user lain
+
+🔹 METODE 1 — SIMPLE QUEUE (REKOMENDASI)
+📌 Konsep
+
+Limit total bandwidth Nextcloud
+
+Bagi rata ke user
+
+Mudah maintenance
+
+1️⃣ Tentukan IP Nextcloud
+
+Misal:
+
+IP Nextcloud : 192.168.10.50
+
+2️⃣ Buat Simple Queue (TOTAL)
+/queue simple
+add name="NEXTCLOUD-TOTAL" \
+target=192.168.10.50 \
+max-limit=50M/100M \
+priority=1/1
+
+
+📌 Artinya:
+
+Upload max 50 Mbps
+
+Download max 100 Mbps
+
+Priority tertinggi
+
+3️⃣ Batasi Per User (Opsional tapi Disarankan)
+
+Misal:
+
+Upload: 2 Mbps
+
+Download: 5 Mbps
+
+/queue simple
+add name="NEXTCLOUD-PER-USER" \
+target=192.168.10.0/24 \
+max-limit=2M/5M \
+parent="NEXTCLOUD-TOTAL"
+
+
+✔ Tidak ada user yang “rakus” bandwidth
+✔ Stabil saat jam sibuk
+
+4️⃣ Verifikasi
+/queue simple print stats
+
+🔹 METODE 2 — QUEUE TREE (LEVEL LANJUTAN)
+
+Lebih presisi, cocok jika jaringan besar.
+
+1️⃣ Buat Mangle (Mark Traffic Nextcloud)
+/ip firewall mangle
+add chain=forward dst-address=192.168.10.50 \
+action=mark-connection new-connection-mark=nc_conn passthrough=yes
+
+add chain=forward connection-mark=nc_conn \
+action=mark-packet new-packet-mark=nc_pkt passthrough=no
+
+2️⃣ Buat Queue Tree
+/queue tree
+add name="NEXTCLOUD-UP" parent=global \
+packet-mark=nc_pkt max-limit=50M priority=1
+
+add name="NEXTCLOUD-DOWN" parent=global \
+packet-mark=nc_pkt max-limit=100M priority=1
+
+🔐 TIPS WAJIB AGAR STABIL
+
+✔ Aktifkan FastTrack EXCEPT Nextcloud
+
+/ip firewall filter
+add chain=forward action=fasttrack-connection \
+connection-state=established,related \
+dst-address=!192.168.10.50
+
+
+✔ Jangan FastTrack traffic Nextcloud
+✔ Jangan QoS di interface WAN kecil (CPU load)
+
+📊 REKOMENDASI NILAI REALISTIS
+Parameter	Nilai
+Per user upload	1–2 Mbps
+Per user download	3–5 Mbps
+Priority	1
+Burst	Optional
+✅ REKOMENDASI SAYA
+
+Untuk setup Anda:
+
+🔥 Gunakan SIMPLE QUEUE
+Lebih stabil, minim error, mudah troubleshooting
+
+🧪 TEST CEPAT
+
+Upload file 500 MB
+
+Buka YouTube di client lain
+✔ YouTube tidak lag
+✔ Upload tetap jalan
+
+Mau saya buatkan:
+
+QoS berdasarkan port 443 saja
+
+QoS berdasarkan domain (SNI)
+
+QoS Cloudflared khusus
+
+Versi .rsc siap import
+
+Diagram Mikrotik + Nextcloud
+
+Tinggal bilang 👍
+
+
+
+Kalau SEMUA aplikasi Anda lewat reverse proxy HTTPS (443), maka:
+
+❌ QoS berbasis port TIDAK BISA MEMBEDAKAN aplikasi
+❌ IP host LXD kena semua
+❌ Port 443 sama semua
+
+Tapi tenang — masih ADA solusi yang BENAR & dipakai di production.
+
+Saya jelaskan opsi yang REALISTIS dari yang bisa sekarang sampai paling ideal.
+
+🧩 KENAPA INI SULIT?
+
+HTTPS terenkripsi → router tidak tahu isinya
+
+Semua lewat:
+
+IP sama + port 443
+
+
+Reverse proxy (Apache / Nginx / Traefik / Cloudflared)
+
+➡️ Router tidak bisa bedakan Nextcloud, Cacti, UniFi, dll
+
+🟢 SOLUSI YANG MASIH BISA DIPAKAI
+🔥 SOLUSI 1 — QoS BERDASARKAN SNI (TLS HOSTNAME) ✅
+
+👉 INI PALING MASUK AKAL TANPA UBAH TOPOLOGI
+
+Mikrotik BISA membaca SNI TLS (hostname HTTPS).
+
+Contoh:
+nextcloud.domain.com
+cacti.domain.com
+unifi.domain.com
+
+1️⃣ Mangle berdasarkan TLS Host (RouterOS v7)
+/ip firewall mangle
+add chain=forward protocol=tcp dst-port=443 \
+tls-host=nextcloud.domain.com \
+action=mark-connection new-connection-mark=nc_conn passthrough=yes
+
+add chain=forward connection-mark=nc_conn \
+action=mark-packet new-packet-mark=nc_pkt passthrough=no
+
+2️⃣ Queue Tree
+/queue tree
+add name="NC-UP" parent=global packet-mark=nc_pkt max-limit=50M priority=1
+add name="NC-DOWN" parent=global packet-mark=nc_pkt max-limit=100M priority=1
+
+
+✅ Presisi
+✅ Tidak ganggu service lain
+⚠️ Hanya RouterOS v7
+
+
+
+
+
+Berikut penjelasan + contoh konfigurasi App Hardening Nextcloud yang dipakai di server produksi, bukan teori doang.
+Saya susun bertingkat (Basic → Pro) supaya jelas mana yang wajib dan mana yang opsional.
+
+🔐 Apa itu App Hardening Nextcloud?
+
+App hardening =
+
+Mengurangi attack surface Nextcloud dengan:
+
+menonaktifkan fitur tidak perlu
+
+membatasi akses
+
+mengunci perilaku aplikasi
+
+memperketat session & autentikasi
+
+Tujuannya:
+
+Aman walau exposed ke internet (Cloudflared / reverse proxy)
+
+Stabil untuk banyak user
+
+Minim kebocoran data
+
+🧱 LEVEL 1 — HARDENING DASAR (WAJIB)
+1️⃣ Nonaktifkan aplikasi yang tidak dipakai
+
+Ini wajib.
+
+sudo -u www-data php occ app:disable talk
+sudo -u www-data php occ app:disable mail
+sudo -u www-data php occ app:disable richdocuments
+sudo -u www-data php occ app:disable files_texteditor
+sudo -u www-data php occ app:disable search_elasticsearch
+
+
+📌 Alasan:
+
+Talk → WebRTC (besar attack surface)
+
+Mail → IMAP external (risk kredensial)
+
+Office → CPU/RAM berat
+
+Search engine → tidak perlu jika user sedikit
+
+2️⃣ Paksa HTTPS (walau pakai Cloudflared)
+
+Di config.php:
+
+'overwriteprotocol' => 'https',
+'trusted_proxies' => ['127.0.0.1'],
+
+
+📌 Ini penting agar:
+
+session cookie aman
+
+tidak redirect aneh ke IP private
+
+3️⃣ Matikan update otomatis app
+'appstoreenabled' => true,
+'appstore.experimental.enabled' => false,
+
+
+Update manual = lebih aman.
+
+🧱 LEVEL 2 — SESSION & LOGIN HARDENING (PRO)
+4️⃣ Batasi durasi session login (jawaban dari pertanyaan kamu sebelumnya)
+'session_lifetime' => 3600,        // 1 jam
+'session_keepalive' => false,
+'remember_login_cookie_lifetime' => 0,
+
+
+📌 Efek:
+
+User auto logout
+
+Aman di PC umum
+
+Cocok lingkungan kantor
+
+5️⃣ Batasi jumlah session per user
+'limit_user_sessions' => true,
+
+
+📌 User tidak bisa login dari banyak device sekaligus.
+
+6️⃣ Aktifkan proteksi brute force
+
+(Default aktif, pastikan tidak dimatikan)
+
+'auth.bruteforce.protection.enabled' => true,
+
+🧱 LEVEL 3 — FILE & SHARING HARDENING
+7️⃣ Matikan public share (jika internal only)
+sudo -u www-data php occ config:system:set shareapi_allow_public_upload --type=boolean --value=false
+sudo -u www-data php occ config:system:set shareapi_enabled --type=boolean --value=false
+
+
+📌 Sangat disarankan untuk internal server.
+
+8️⃣ Disable preview file berat
+'enable_previews' => true,
+'enabledPreviewProviders' => [
+  'OC\Preview\PNG',
+  'OC\Preview\JPEG',
+  'OC\Preview\GIF'
+],
+
+
+📌 Hindari:
+
+video
+
+pdf besar
+
+file office
+
+🧱 LEVEL 4 — USER & ADMIN HARDENING
+9️⃣ Paksa 2FA untuk semua user
+sudo -u www-data php occ app:enable twofactor_totp
+sudo -u www-data php occ twofactorauth:enforce
+
+
+📌 WAJIB jika exposed internet.
+
+🔟 Batasi hak admin
+
+Gunakan:
+
+admin (1 user)
+
+group admin terbatas
+
+sudo -u www-data php occ group:add admin-infra
+sudo -u www-data php occ group:adduser admin-infra user1
+
+🧱 LEVEL 5 — BACKEND & SYSTEM HARDENING (ADVANCED)
+11️⃣ Redis untuk file locking
+'memcache.locking' => '\OC\Memcache\Redis',
+'redis' => [
+  'host' => '/var/run/redis/redis.sock',
+  'port' => 0,
+],
+
+
+📌 Wajib untuk stabilitas.
+
+12️⃣ Disable WebDAV anonymous behavior
+'filesystem_check_changes' => 1,
+
+🧪 Validasi Hardening (Checklist)
+sudo -u www-data php occ security:certificates
+sudo -u www-data php occ integrity:check-core
+sudo -u www-data php occ app:list
+
+🧠 Ringkasan Paling Penting (INTI)
+
+Kalau mau Nextcloud aman & stabil, minimal lakukan ini:
+
+✅ Disable app tidak perlu
+✅ Paksa HTTPS
+✅ Batasi session login
+✅ Aktifkan 2FA
+✅ Nonaktifkan public sharing
+✅ Redis locking
+
+📌 Catatan Khusus Lingkungan Kamu (LXD + Cloudflared)
+
+Rekomendasi tambahan:
+
+1 container = 1 service
+
+Jangan campur Cacti / Samba / UniFi di container yang sama
+
+Nextcloud butuh:
+
+RAM stabil
+
+I/O disk konsisten
+
+Kalau mau, saya bisa:
+
+🔐 Review config.php kamu
+
+📄 Buat hardening checklist versi PDF
+
+🧠 Buat template hardening untuk portfolio
+
+🧪 Simulasi audit security Nextcloud
+
+Tinggal bilang 👉 lanjut ke mana
+
+
+
+
+
+Ini konfigurasi FINAL & AMAN supaya:
+✅ Sinkronisasi Windows & Android TIDAK terganggu
+✅ Browser tetap dibatasi
+✅ Cocok untuk Cloudflared + LXD + produksi
+✅ Tidak bikin user sering login ulang
+Saya buat step-by-step + alasan tiap setting.
+
+🔐 KONFIGURASI SESSION NEXTCLOUD (PRODUKSI AMAN)
+🎯 Target Konfigurasi
+ItemHasilWindows client❌ tidak logoutAndroid app❌ tidak logoutWeb browser⏱️ auto logout jika idleJumlah devicedibatasi wajarSecuritytinggi
+
+🧩 STEP 1 — Edit config.php
+Lokasi:
+/var/www/nextcloud/config/config.php
+
+Tambahkan / pastikan BARIS INI ADA:
+/* === SESSION & LOGIN CONTROL === */
+'limit_user_sessions' => true,
+
+// Maksimal device:
+// 1 Windows + 1 Android + 1 Browser
+'max_user_sessions' => 3,
+
+// Session browser (1 jam)
+'session_lifetime' => 3600,
+
+// BIARKAN true agar app client tidak logout
+'session_keepalive' => true,
+
+// Jangan simpan login lama di browser
+'remember_login_cookie_lifetime' => 0,
+
+/* === SECURITY === */
+'auth.bruteforce.protection.enabled' => true,
+'overwriteprotocol' => 'https',
+'trusted_proxies' => ['127.0.0.1'],
+
+
+🧠 PENJELASAN (PENTING)
+🔹 max_user_sessions = 3
+➡️ Aman untuk:
+
+
+Windows client
+
+
+Android app
+
+
+Browser
+
+
+❗ Jangan pakai 2 kalau user aktif sync
+
+🔹 session_lifetime = 3600
+➡️ Hanya berdampak ke browser
+➡️ App client pakai token → aman
+
+🔹 session_keepalive = true
+❗ WAJIB TRUE
+Kalau false:
+
+
+Android & Windows sering logout
+
+
+Sync error
+
+
+
+🔹 remember_login_cookie_lifetime = 0
+➡️ Browser tidak stay login
+➡️ Aman di PC umum
+
+🧪 STEP 2 — Validasi Konfigurasi
+Jalankan:
+sudo -u www-data php occ config:system:get max_user_sessions
+sudo -u www-data php occ config:system:get session_lifetime
+sudo -u www-data php occ config:system:get session_keepalive
+
+
+🧪 STEP 3 — Test Nyata (WAJIB)
+1️⃣ Login via Windows client
+2️⃣ Login via Android app
+3️⃣ Login via Web browser
+➡️ Total = 3 session (AMAN)
+4️⃣ Login browser ke-2
+➡️ Browser lama logout
+➡️ Sync tetap jalan
+Cek:
+sudo -u www-data php occ user:session:list username
+
+
+🧱 OPTIONAL (REKOMENDASI TAMBAHAN)
+🔐 Aktifkan 2FA
+sudo -u www-data php occ app:enable twofactor_totp
+sudo -u www-data php occ twofactorauth:enforce
+
+
+🛠️ User Khusus Backup
+JANGAN pakai user biasa.
+sudo -u www-data php occ user:add backupuser
+
+📌 Backup user tidak dibatasi session (idealnya).
+
+⚠️ KESALAHAN YANG SERING TERJADI (HINDARI)
+❌ max_user_sessions = 2
+❌ session_keepalive = false
+❌ Session terlalu pendek (<1800)
+
+🏁 RINGKASAN AMAN
+✔ Sync aman
+✔ Browser dibatasi
+✔ Tidak ganggu Android / Windows
+✔ Cocok untuk Cloudflared
+
+Kalau mau, saya bisa:
+
+
+📄 Buat config.php versi final (downloadable)
+
+
+🧠 Buat policy user vs admin
+
+
+📊 Rekomendasi session untuk 50–100 user
+
+
+🔐 Audit keamanan Nextcloud kamu
+
+
+Tinggal bilang 👉 mau lanjut yang mana
+
+
+
+
+	Display your Nextcloud version:
+
+	sudo -u www-data php occ -V
+	Nextcloud version 19.0.0
+
+ 	Apps commands
+	The app commands list, enable, and disable apps:
+	app
+	app:install install selected app
+	app:disable disable an app
+	app:enable enable an app
+	app:getpath get an absolute path to the app directory
+	app:list list all available apps
+	app:update update an app or all apps
+	app:remove disable and remove an app
+
+
+	Download and install an app:
+	sudo -u www-data php occ app:install twofactor_totp
+	Install but don’t enable:
+	sudo -u www-data php occ app:install --keep-disabled twofactor_totp
+	List all of your installed apps, and show whether they are enabled or disabled:
+	sudo -u www-data php occ app:list
+	Enable an app, for example the External Storage Support app:
+	sudo -u www-data php occ app:enable files_external
+	files_external enabled
+	Disable an app:
+	sudo -u www-data php occ app:disable files_external
+	files_external disabled
+	You can get the full filepath to an app:
+	sudo -u www-data php occ app:getpath notifications
+	/var/www/nextcloud/apps/notifications
+	To update an app, for instance Contacts:
+	sudo -u www-data php occ app:update contacts
+	To update all apps:
+	sudo -u www-data php occ app:update --all
+
+	Transfer File 
+	sudo -u www-data php occ files:transfer-ownership <source-user> <destination-user>
+	sudo -u www-data php occ files:transfer-ownership --move <source-user> <destination-,→user>
+	sudo -u www-data php occ files:transfer-ownership --path="path_to_dir" <source-user>,→<destination-user>
+	sudo -u www-data php occ files:transfer-ownership --transfer-incoming-shares=1 --path=,→"path_to_dir" <source-user> <destination-user>
+	sudo -u www-data php occ files:transfer-ownership --transfer-incoming-shares=1 --path=,→"path_to_dir" <source-user> <destination-user>
+
+
+	
