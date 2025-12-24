@@ -1,3 +1,84 @@
+/etc/clamav/clamd.conf (RECOMMENDED)
+
+
+################################
+# BASIC SETTINGS
+################################
+LogFile /var/log/clamav/clamd.log
+LogTime yes
+LogSyslog no
+LogVerbose no
+
+PidFile /run/clamav/clamd.pid
+TemporaryDirectory /tmp
+
+################################
+# NETWORK (UNTUK NEXTCLOUD)
+################################
+TCPSocket 3310
+TCPAddr 0.0.0.0
+
+################################
+# PERFORMANCE & RESOURCE
+################################
+MaxThreads 4
+ReadTimeout 120
+CommandReadTimeout 120
+
+MaxScanSize 500M
+StreamMaxLength 500M
+MaxFileSize 200M
+
+################################
+# SCAN BEHAVIOR
+################################
+ScanArchive yes
+ScanPE yes
+ScanELF yes
+ScanOLE2 yes
+ScanPDF yes
+ScanHTML yes
+ScanMail yes
+ScanPartialMessages yes
+
+################################
+# HEURISTIC & PUA
+################################
+DetectPUA yes
+HeuristicAlerts yes
+HeuristicScanPrecedence yes
+
+################################
+# ARCHIVE & COMPRESSION PROTECTION
+################################
+MaxRecursion 16
+MaxFiles 20000
+MaxEmbeddedPE 10M
+
+################################
+# SECURITY
+################################
+DisableCertCheck yes
+AllowAllMatchScan yes
+AlertEncryptedArchive yes
+AlertEncryptedDoc yes
+
+################################
+# DATABASE
+################################
+DatabaseDirectory /var/lib/clamav
+OfficialDatabaseOnly no
+
+################################
+# USER
+################################
+User clamav
+
+################################
+# SOCKET (OPTIONAL – BISA DIMATIKAN)
+################################
+#LocalSocket /run/clamav/clamd.ctl
+#LocalSocketMode 666
 
 
 
@@ -583,6 +664,7 @@ Tinggal bilang 👉 mau lanjut yang mana
 	sudo -u www-data php occ files:transfer-ownership --path="path_to_dir" <source-user>,→<destination-user>
 	sudo -u www-data php occ files:transfer-ownership --transfer-incoming-shares=1 --path=,→"path_to_dir" <source-user> <destination-user>
 	sudo -u www-data php occ files:transfer-ownership --transfer-incoming-shares=1 --path=,→"path_to_dir" <source-user> <destination-user>
+
 
 
 	
