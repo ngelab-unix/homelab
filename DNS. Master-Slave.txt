@@ -1,0 +1,461 @@
+Saya ulangi STEP-BY-STEP dari NOL untuk BIND9 DNS MASTER → SLAVE yang benar & production-ready.
+
+Contoh asumsi (silakan sesuaikan IP):
+
+DNS-1 (MASTER) : 10.10.10.1
+DNS-2 (SLAVE)  : 10.10.10.2
+Domain         : srvlab.my.id
+Reverse zone   : 10.10.10.0/24
+OS             : Ubuntu / Debian (BIND9)
+
+🧱 STEP 0 — INSTALL BIND (DNS-1 & DNS-2)
+apt update
+apt install bind9 bind9utils bind9-dnsutils -y
+systemctl enable bind9
+
+🥇 STEP 1 — KONFIGURASI DNS-1 (MASTER)
+1️⃣ Buat ZONE FILE (FORWARD)
+nano /etc/bind/db.srvlab.my.id
+
+$TTL 300
+@   IN SOA dns1.srvlab.my.id. admin.srvlab.my.id. (
+        2025122901 ; serial (WAJIB naik tiap edit)
+        3600       ; refresh
+        900        ; retry
+        604800     ; expire
+        300        ; minimum
+)
+
+; NS
+@       IN NS  dns1.srvlab.my.id.
+@       IN NS  dns2.srvlab.my.id.
+
+; A RECORD
+dns1    IN A   10.10.10.1
+dns2    IN A   10.10.10.2
+cloud   IN A   10.10.10.50
+
+2️⃣ Buat ZONE FILE (REVERSE)
+nano /etc/bind/db.10.10.10
+
+$TTL 300
+@   IN SOA dns1.srvlab.my.id. admin.srvlab.my.id. (
+        2025122901
+        3600
+        900
+        604800
+        300
+)
+
+@       IN NS  dns1.srvlab.my.id.
+@       IN NS  dns2.srvlab.my.id.
+
+1       IN PTR dns1.srvlab.my.id.
+2       IN PTR dns2.srvlab.my.id.
+50      IN PTR cloud.srvlab.my.id.
+
+3️⃣ DAFTARKAN ZONE (DNS-1)
+nano /etc/bind/named.conf.local
+
+zone "srvlab.my.id" {
+    type master;
+    file "/etc/bind/db.srvlab.my.id";
+    allow-transfer { 10.10.10.2; };
+    also-notify { 10.10.10.2; };
+};
+
+zone "10.10.10.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.10.10.10";
+    allow-transfer { 10.10.10.2; };
+    also-notify { 10.10.10.2; };
+};
+
+4️⃣ VALIDASI & RESTART (DNS-1)
+named-checkzone srvlab.my.id /etc/bind/db.srvlab.my.id
+named-checkzone 10.10.10.in-addr.arpa /etc/bind/db.10.10.10
+systemctl restart bind9
+
+🥈 STEP 2 — KONFIGURASI DNS-2 (SLAVE)
+1️⃣ DAFTARKAN ZONE (SLAVE)
+nano /etc/bind/named.conf.local
+
+zone "srvlab.my.id" {
+    type slave;
+    masters { 10.10.10.1; };
+    file "/etc/bind/slaves/db.srvlab.my.id";
+};
+
+zone "10.10.10.in-addr.arpa" {
+    type slave;
+    masters { 10.10.10.1; };
+    file "/etc/bind/slaves/db.10.10.10";
+};
+
+2️⃣ BUAT DIRECTORY SLAVE
+mkdir -p /etc/bind/slaves
+chown bind:bind /etc/bind/slaves
+
+3️⃣ RESTART DNS-2
+systemctl restart bind9
+
+
+📌 DNS-2 akan auto-sync dari DNS-1
+
+🧪 STEP 3 — VERIFIKASI SYNC
+Cek file di DNS-2:
+ls -l /etc/bind/slaves/
+
+
+Harus muncul:
+
+db.srvlab.my.id
+db.10.10.10
+
+Cek serial sama:
+dig @10.10.10.1 srvlab.my.id SOA
+dig @10.10.10.2 srvlab.my.id SOA
+
+
+✔ Serial HARUS SAMA
+
+🔄 STEP 4 — UPDATE ZONE (CONTOH)
+
+Di DNS-1 saja:
+
+app     IN A 10.10.10.60
+
+
+⬆️ Naikkan serial
+
+2025122902
+
+
+Restart:
+
+systemctl reload bind9
+
+
+➡️ DNS-2 OTOMATIS UPDATE
+
+🚫 LARANGAN KERAS
+
+❌ Edit zone di DNS-2
+❌ Copy manual db ke DNS-2
+❌ Serial tidak naik
+❌ Block TCP 53
+
+🏁 RINGKASAN FINAL
+
+✔ DNS-1 = MASTER
+✔ DNS-2 = SLAVE
+✔ Semua edit di DNS-1
+✔ Serial naik = auto sync
+✔ DNS-2 zero-touch
+
+Kalau mau lanjut, saya bisa bantu:
+1️⃣ Split DNS internal vs public
+2️⃣ DNSSEC master-slave
+3️⃣ HA DNS (keepalived / anycast)
+4️⃣ Integrasi BIND + Cloudflare
+5️⃣ Monitoring DNS (alert kalau slave lag)
+
+Tinggal bilang 👍
+
+
+
+
+
+
+
+
+
+
+
+
+
+🎯 KONDISI AWAL (ASUMSI)
+
+✅ DNS MASTER sudah jalan
+
+✅ Zone sudah ada di MASTER
+
+✅ IP MASTER: 10.10.10.10
+
+✅ IP SLAVE: 10.20.20.10
+
+✅ Zone: srvlab.my.id
+
+🥇 STEP 1 — INSTALL BIND9 DI SLAVE
+
+Di container DNS SLAVE:
+
+apt update
+apt install bind9 bind9-utils -y
+
+🥇 STEP 2 — KONFIGURASI ZONE SLAVE
+
+Edit file:
+
+nano /etc/bind/named.conf.local
+
+
+Isi HANYA INI (jangan buat zone file manual):
+
+zone "srvlab.my.id" {
+    type slave;
+    masters { 10.10.10.10; };
+    file "/var/cache/bind/db.srvlab.my.id";
+};
+
+
+📌 JANGAN:
+
+buat /etc/bind/zones/db.srvlab.my.id
+
+edit zone di slave
+
+🥇 STEP 3 — OPSIONAL (OPTIONS FILE)
+
+Biasanya default cukup, tapi aman kalau dicek:
+
+nano /etc/bind/named.conf.options
+
+
+Pastikan ada:
+
+options {
+    directory "/var/cache/bind";
+    recursion yes;
+    allow-query { any; };
+};
+
+🥇 STEP 4 — FIREWALL (WAJIB)
+
+Pastikan SLAVE bisa akses MASTER:
+
+Port	Protocol
+53	TCP & UDP
+
+Jika ada firewall antar segmen → WAJIB dibuka
+
+🥇 STEP 5 — RESTART BIND SLAVE
+systemctl restart bind9
+
+🥇 STEP 6 — CEK SYNC (PALING PENTING)
+1️⃣ Lihat log
+journalctl -u bind9 -n 50
+
+
+Harus ada:
+
+zone srvlab.my.id/IN: transferred serial XXXXX
+
+2️⃣ Cek file zone
+ls -l /var/cache/bind/
+
+
+Harus ada:
+
+db.srvlab.my.id
+
+🥇 STEP 7 — TEST QUERY
+
+Dari SLAVE:
+
+dig @10.20.20.10 ca01.srvlab.my.id
+
+
+Bandingkan dengan MASTER:
+
+dig @10.10.10.10 ca01.srvlab.my.id
+
+
+✔ Output HARUS sama
+
+🔁 CARA SYNC SELANJUTNYA (OTOMATIS)
+
+Setiap kali Anda:
+
+Edit zone di MASTER
+
+Naikkan serial number
+
+Reload BIND MASTER
+
+➡️ SLAVE AUTO UPDATE
+
+Tidak perlu restart slave.
+
+⚠️ KESALAHAN UMUM (HINDARI)
+
+❌ Serial tidak naik
+❌ Firewall TCP 53 ditutup
+❌ Dua master
+❌ Edit zone di slave
+❌ Salah IP master
+
+🧠 RINGKASAN FINAL
+
+✔ SLAVE tidak punya zone file sendiri
+✔ Sinkron AUTO via AXFR
+✔ Cukup 1 baris config
+✔ Beda segmen aman
+✔ Cocok productio
+
+
+🎯 KASUS: BANYAK SUBDOMAIN + HA CLOUDFLARED
+
+Contoh:
+
+cloud.srvlab.my.id   → Nextcloud
+git.srvlab.my.id     → Gitea
+app.srvlab.my.id     → Web internal
+vpn.srvlab.my.id     → Admin portal
+
+
+Target:
+✔ Semua HA
+✔ Failover otomatis
+✔ Tidak ribet maintain
+
+🧠 PRINSIP DASAR (WAJIB DIPEGANG)
+1️⃣ Load Balancer bekerja per-hostname
+
+Cloudflare TIDAK auto-failover semua subdomain dalam satu LB.
+
+➡️ Setiap hostname punya kebijakan sendiri
+
+2️⃣ Cloudflared tunnel itu shared transport
+
+Satu tunnel boleh handle banyak subdomain
+
+3️⃣ HA ideal =
+
+Sedikit tunnel, banyak hostname
+
+🏆 OPSI TERBAIK (REKOMENDASI)
+🥇 OPSI A — 1 PASANG TUNNEL, BANYAK SUBDOMAIN (PALING IDEAL)
+Arsitektur:
+Tunnel-FE-1
+Tunnel-FE-2
+   |
+   +-- cloud.srvlab.my.id
+   +-- git.srvlab.my.id
+   +-- app.srvlab.my.id
+
+config.yml (di kedua frontend)
+tunnel: tunnel-fe-1
+credentials-file: /root/.cloudflared/tunnel-fe-1.json
+
+ingress:
+  - hostname: cloud.srvlab.my.id
+    service: https://localhost:443
+  - hostname: git.srvlab.my.id
+    service: http://localhost:3000
+  - hostname: app.srvlab.my.id
+    service: http://localhost:8080
+  - service: http_status:404
+
+
+Frontend-2 SAMA, beda tunnel ID.
+
+Load Balancer:
+
+Buat 1 Load Balancer per subdomain
+
+Subdomain	Pool
+cloud.*	FE1 + FE2
+git.*	FE1 + FE2
+app.*	FE1 + FE2
+
+✔ Tunnel reuse
+✔ Failover presisi
+✔ Mudah maintain
+
+🥈 OPSI B — WILDCARD SUBDOMAIN (HEMAT WAKTU)
+*.srvlab.my.id
+
+Kelebihan:
+
+✔ Cepat
+✔ Satu LB
+✔ Sedikit klik
+
+Kekurangan:
+
+❌ Semua service ikut failover bareng
+❌ Health check satu titik
+❌ Kurang granular
+
+📌 Cocok:
+
+Lab
+
+Internal app
+
+Homelab
+
+🥉 OPSI C — TUNNEL PER SUBDOMAIN (TIDAK REKOMENDASI)
+Tunnel-cloud
+Tunnel-git
+Tunnel-app
+
+
+❌ Ribet
+❌ Overkill
+❌ Susah maintain
+❌ Tidak scalable
+
+🔑 REKOMENDASI SAYA UNTUK ANDA
+
+Melihat:
+✔ Banyak service (Nextcloud, DNS, WAF, Nginx)
+✔ LXD + container
+✔ Fokus learning + production
+
+👉 PAKAI OPSI A
+
+🔧 CONTOH DETAIL LOAD BALANCER (cloud.srvlab.my.id)
+Pool:
+
+tunnel-fe-1
+
+tunnel-fe-2
+
+Health Check:
+HTTPS
+Path: /status.php
+Interval: 60s
+Timeout: 5s
+
+🧪 FAILOVER MATRIX (BIAR JELAS)
+Kondisi	Hasil
+FE-1 mati	FE-2 aktif
+FE-2 mati	FE-1 aktif
+Backend mati	503
+DNS mati	TIDAK PENGARUH
+🚫 KESALAHAN UMUM
+
+❌ Satu tunnel per service
+❌ DNS round-robin
+❌ Health check /
+❌ SSL beda per frontend
+❌ Load balancer di Mikrotik (L7)
+
+🏁 RINGKASAN CEPAT
+
+✔ Banyak subdomain → satu pasangan tunnel
+✔ Load balancer → per subdomain
+✔ Failover → Cloudflare
+✔ DNS internal → tidak ikut HA
+✔ Ini arsitektur production-grade
+
+Kalau mau lanjut, saya bisa bantu:
+1️⃣ Template config.yml final sesuai service Anda
+2️⃣ Naming convention tunnel & LB
+3️⃣ Cost Cloudflare Load Balancer (penting)
+4️⃣ Diagram ASCII final multi-subdomain
+5️⃣ Best practice health check tiap app
+
+Tinggal bilang mau lanjut ke yang mana 👍
