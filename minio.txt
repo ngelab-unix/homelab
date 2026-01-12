@@ -1,0 +1,372 @@
+Baik, saya jelaskan step-by-step sampai berhasil akses MinIO dari luar jaringan menggunakan:
+
+S3 Browser / WinSCP S3 / Cyberduck
+
+Akses via Access Key + Secret Key
+
+Topologi Cloudflared → Mikrotik → CASAOS host → Docker MinIO
+
+Reverse proxy dilakukan di LXD (Nginx)
+
+🟦 TOPOLOGI YANG ANDA PAKAI
+
+Saya rangkum topologinya:
+
+Internet
+   ↓
+Cloudflare Tunnel (cloudflared)
+   ↓
+Mikrotik (NAT / Firewall)
+   ↓
+CASAOS Host (192.168.20.12)
+   ↓
+Docker MinIO port 9010
+   ↓
+LXD Host Canonical 192.168.1.15
+   ↓
+Container DNS + Cloudflare-Connector + Nginx (10.105.30.20)
+
+
+Anda ingin agar S3 Browser dari Internet bisa login ke MinIO melalui:
+
+✔ Domain
+✔ SSL Cloudflare
+✔ Reverse proxy Nginx di LXD
+✔ Access Key + Secret Key
+✔ Port default S3: 443
+
+	🟩 LANGKAH 1 — Tentukan Domain MinIO Anda
+
+	Misalnya Anda ingin akses:
+	s3.srvlab.my.id
+
+	🟧 LANGKAH 2 — Tambah Routing Cloudflared (Tunnel → Nginx LXD)
+
+	Masuk ke cloudflared container (DNS + cloudflared):
+	di file /etc/cloudflared/config.yml
+
+	Tambahkan:
+tunnel: your-tunnel-id
+credentials-file: /etc/cloudflared/your-tunnel-id.json
+
+ingress:
+  - hostname: s3.srvlab.my.id
+    service: http://10.105.30.20:443
+  - service: http_status:404
+
+	⚠ NOTE
+	Service ke LXD nginx pakai port 443 internal (jika nginx Anda pakai SSL).
+	Jika tidak, pakai port 80.
+
+	🟦 LANGKAH 3 — Reverse Proxy di NGINX (LXD 10.105.30.20)
+	📌 File: /etc/nginx/sites-available/minio.conf
+	
+	Gunakan reverse proxy aman untuk S3 API:
+
+server {
+    listen 443 ssl;
+    server_name s3.srvlab.my.id;
+
+    ssl_certificate /etc/letsencrypt/live/s3.srvlab.my.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/s3.srvlab.my.id/privkey.pem;
+
+    client_max_body_size 100G;
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 300;
+        proxy_read_timeout 300;
+        proxy_http_version 1.1;
+
+        proxy_pass http://192.168.20.12:9010;
+    }
+}
+
+
+
+	Aktifkan:
+	ln -s /etc/nginx/sites-available/minio.conf /etc/nginx/sites-enabled/
+
+	systemctl reload nginx
+
+	🟪 LANGKAH 4 — Pastikan MinIO Mengizinkan Reverse Proxy
+
+	Modifikasi docker compose / command MinIO Anda:
+	Tambahkan:
+
+	MINIO_SERVER_URL=https://s3.srvlab.my.id
+	MINIO_BROWSER_REDIRECT_URL=https://s3.srvlab.my.id
+
+	Contoh di Docker Compose:
+	environment:
+  	- MINIO_ROOT_USER=ADMIN
+  	- MINIO_ROOT_PASSWORD=xxxxxxxx
+  	- MINIO_SERVER_URL=https://s3.srvlab.my.id
+  	- MINIO_BROWSER_REDIRECT_URL=https://s3.srvlab.my.id
+
+	Restart MinIO:
+	docker restart minio
+
+
+
+Baik, saya buatkan paket lengkap sesuai permintaan Anda. Semua sudah saya sesuaikan dengan topologi Anda yang memakai:
+
+Cloudflared
+
+Mikrotik
+
+Host Container → Docker MinIO (port 9010)
+
+LXD Host (DNS + NGINX Reverse Proxy)
+
+Akses dari luar menggunakan S3 Browser, MinIO Client (mc), dll.
+
+🟦 1. RANCANGAN STORAGE MINIO (BEST PRACTICE)
+A. Struktur Folder / Storage
+
+Gunakan struktur berikut:
+
+/data/minio/
+    ├── hrd/
+    ├── finance/
+    ├── it/
+    └── backup/
+
+B. Arsitektur Storage
+
+Untuk server single node:
+
+Disk 1: OS
+
+Disk 2: Data MinIO (S3)
+
+Gunakan ZFS / RAID1 agar aman jika disk mati.
+
+Jika Anda ingin durable:
+
+RAID10 → high performance
+
+ZFS RAIDZ2 → durable untuk backup
+
+MinIO sangat bagus jika memakai disk khusus, jangan campurkan dengan OS!
+
+🟦 2. POLICY PER DIVISI (HRD, FINANCE, IT)
+Policy 1 — HRD upload-only (tidak bisa hapus)
+{
+ "Version": "2012-10-17",
+ "Statement": [
+   {
+     "Effect": "Allow",
+     "Action": ["s3:PutObject"],
+     "Resource": ["arn:aws:s3:::hrd/*"]
+   },
+   {
+     "Effect": "Allow",
+     "Action": ["s3:ListBucket"],
+     "Resource": ["arn:aws:s3:::hrd"]
+   }
+ ]
+}
+
+Policy 2 — Finance full access bucket-nya sendiri
+{
+ "Version": "2012-10-17",
+ "Statement": [
+   {
+     "Effect": "Allow",
+     "Action": ["s3:*"],
+     "Resource": ["arn:aws:s3:::finance/*", "arn:aws:s3:::finance"]
+   }
+ ]
+}
+
+Policy 3 — IT admin (akses semua bucket)
+{
+ "Version": "2012-10-17",
+ "Statement": [
+   {
+     "Effect": "Allow",
+     "Action": ["s3:*"],
+     "Resource": ["arn:aws:s3:::*"]
+   }
+ ]
+}
+
+
+Nanti akan saya sertakan perintah mc admin policy import pada tahap instalasi.
+
+🟦 3. ARSITEKTUR JARINGAN LENGKAP
+Internal Topologi
+USER → Cloudflared Tunnel → Domain → Reverse Proxy (NGINX) → MinIO Container
+
+Detail IP
+Komponen	IP	Keterangan
+Host Docker (MinIO)	192.168.20.12	Port 9010
+LXD Host + NGINX	10.105.30.20	Reverse Proxy SSL
+Mikrotik	–	Router
+Cloudflared	–	Endpoint domain menuju NGINX
+Akses eksternal
+s3.company.com → cloudflared → nginx → http://192.168.20.12:9010
+
+🟦 4. DIAGRAM TOPOLOGI MINIO + REVERSE PROXY
+                             ┌───────────────────────────┐
+                             │        Internet           │
+                             └─────────────┬─────────────┘
+                                           │
+                                   Cloudflared Tunnel
+                                           │
+                                 s3.company.com (HTTPS)
+                                           │
+                             ┌─────────────▼─────────────┐
+                             │   LXD NGINX Reverse Proxy │
+                             │   IP: 10.105.30.20        │
+                             └─────────────┬─────────────┘
+                                           │ HTTP
+                                           │
+                             ┌─────────────▼─────────────┐
+                             │     Docker Host MinIO      │
+                             │     IP: 192.168.20.12      │
+                             │     Port: 9010             │
+                             └─────────────┬─────────────┘
+                                           │
+                                           │ S3 API
+              ┌────────────────────────────┴───────────────────────────┐
+              │                        USERS                           │
+              │ S3 Browser | mc CLI | Apps Backup | Nextcloud | IT Ops │
+              └────────────────────────────────────────────────────────┘
+
+🟦 5. STEP-BY-STEP INSTALLASI MINIO + MC + POLICY + NGINX
+✅ STEP 1 — Install MinIO di Docker Host
+
+Buat folder data:
+
+sudo mkdir -p /data/minio
+sudo chmod 777 /data/minio
+
+
+Jalankan MinIO:
+
+docker run -d --name minio \
+  -p 9010:9000 \
+  -e MINIO_ROOT_USER=admin \
+  -e MINIO_ROOT_PASSWORD=Admin123! \
+  -v /data/minio:/data \
+  minio/minio server /data --console-address ":9001"
+
+
+Console MinIO nanti di:
+
+http://192.168.20.12:9001
+
+✅ STEP 2 — Install MinIO Client (mc)
+
+Di server LXD atau mesin admin mana saja:
+
+curl https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+chmod +x mc
+sudo mv mc /usr/local/bin/
+
+
+Tambahkan MinIO Anda:
+
+mc alias set local http://192.168.20.12:9010 admin Admin123!
+
+✅ STEP 3 — Buat Bucket per Divisi
+mc mb local/hrd
+mc mb local/finance
+mc mb local/it
+
+✅ STEP 4 — Import Policy Divisi
+
+Buat file dan import:
+
+HRD:
+mc admin policy add local hrd-upload-only hrd-policy.json
+
+Finance:
+mc admin policy add local finance-full finance-policy.json
+
+IT:
+mc admin policy add local it-admin it-policy.json
+
+✅ STEP 5 — Buat User dan Assign Policy
+HRD user
+mc admin user add local hrduser HRDsecret123
+mc admin policy set local hrd-upload-only user=hrduser
+
+Finance user
+mc admin user add local financeuser FINsecret123
+mc admin policy set local finance-full user=financeuser
+
+IT admin
+mc admin user add local itadmin ITsecret123
+mc admin policy set local it-admin user=itadmin
+
+✅ STEP 6 — Setup NGINX Reverse Proxy (di LXD container)
+
+File vhost:
+
+/etc/nginx/sites-available/minio.conf
+
+
+Isi:
+
+server {
+    listen 443 ssl;
+    server_name s3.company.com;
+
+    ssl_certificate /etc/ssl/company/fullchain.pem;
+    ssl_certificate_key /etc/ssl/company/privkey.pem;
+
+    location / {
+        proxy_pass http://192.168.20.12:9010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+
+Aktifkan:
+
+ln -s /etc/nginx/sites-available/minio.conf /etc/nginx/sites-enabled/
+nginx -t
+systemctl restart nginx
+
+✅ STEP 7 — Cloudflared Tunnel
+
+Arahkan domain:
+
+s3.company.com → http://10.105.30.20:443
+
+
+Cloudflared command:
+
+tunnel: your_tunnel_id
+ingress:
+  - hostname: s3.company.com
+    service: https://10.105.30.20
+  - service: http_status:404
+
+
+Restart cloudflared.
+
+🟦 6. Akses dari luar menggunakan S3 Browser
+
+Masukkan:
+
+Endpoint: https://s3.company.com
+
+Access Key: (misalnya user HRD)
+
+Secret Key: (HRDsecret123)
+
+Region: us-east-1 (bebas)
+
+Kemudian S3 Browser akan terhubung.
+
