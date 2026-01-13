@@ -228,9 +228,9 @@ s3.company.com → cloudflared → nginx → http://192.168.20.12:9010
                                            │ HTTP
                                            │
                              ┌─────────────▼─────────────┐
-                             │     Docker Host MinIO      │
-                             │     IP: 192.168.20.12      │
-                             │     Port: 9010             │
+                             │     Docker Host MinIO     │
+                             │     IP: 192.168.20.12     │
+                             │     Port: 9010            │
                              └─────────────┬─────────────┘
                                            │
                                            │ S3 API
@@ -369,4 +369,214 @@ Secret Key: (HRDsecret123)
 Region: us-east-1 (bebas)
 
 Kemudian S3 Browser akan terhubung.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Siap, saya tulis ulang dari nol semua langkah step-by-step untuk:
+
+✔ Instalasi MinIO
+✔ Konfigurasi S3 port 9000/9001
+✔ Reverse Proxy NGINX
+✔ Konfigurasi Cloudflared Tunnel
+✔ Pastikan akses S3 (API) bisa dari luar
+✔ Pastikan akses Console Web juga bisa
+
+Catatan Penting Masalah Anda:
+
+Web Console (port 9001) sudah bisa via https://minio.ngelab-unix.biz.id
+
+S3 API (port 9000) belum bisa via ducks3 / aplikasi → berarti reverse proxy untuk port 9000 belum benar atau Cloudflared tidak expose port 9000
+
+Sekarang kita tulis ulang konfigurasinya dari awal dan paling bersih.
+
+✅ 1. INSTALL MINIO SERVER (NATIVE LINUX, BUKAN DOCKER)
+
+Agar lebih stabil & mudah debug.
+
+1.1 Download MinIO
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+mv minio /usr/local/bin/
+
+1.2 Buat folder penyimpanan
+mkdir -p /data/minio
+
+1.3 Buat user MinIO
+useradd -r minio-user -s /sbin/nologin
+chown -R minio-user:minio-user /data/minio
+
+1.4 Buat file service systemd
+
+/etc/systemd/system/minio.service
+
+[Unit]
+Description=MinIO
+After=network.target
+
+[Service]
+User=minio-user
+Group=minio-user
+ExecStart=/usr/local/bin/minio server /data/minio --console-address ":9001" --address ":9000"
+Restart=always
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+
+1.5 Start MinIO
+systemctl daemon-reload
+systemctl enable --now minio
+
+✅ 2. KONFIGURASI FIREWALL SERVER
+
+Pastikan port internal MinIO terbuka:
+
+ufw allow 9000
+ufw allow 9001
+
+✅ 3. NGINX REVERSE PROXY (PORT 9000 & 9001)
+
+Kami akan membuat:
+
+✔ minio.ngelab-unix.biz.id → MinIO Console (port 9001)
+✔ s3.ngelab-unix.biz.id → S3 API (port 9000)
+3.1 Buat file NGINX:
+1) /etc/nginx/conf.d/minio-console.conf
+server {
+    listen 80;
+    server_name minio.ngelab-unix.biz.id;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name minio.ngelab-unix.biz.id;
+
+    ssl_certificate /etc/letsencrypt/live/minio.ngelab-unix.biz.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/minio.ngelab-unix.biz.id/privkey.pem;
+
+    location / {
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        proxy_pass http://127.0.0.1:9001;
+    }
+}
+
+2) /etc/nginx/conf.d/s3-api.conf
+server {
+    listen 80;
+    server_name s3.ngelab-unix.biz.id;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name s3.ngelab-unix.biz.id;
+
+    ssl_certificate /etc/letsencrypt/live/s3.ngelab-unix.biz.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/s3.ngelab-unix.biz.id/privkey.pem;
+
+    client_max_body_size 0;
+
+    location / {
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        proxy_pass http://127.0.0.1:9000;
+    }
+}
+
+3.2 Reload NGINX
+nginx -t
+systemctl reload nginx
+
+✅ 4. KONFIGURASI CLOUDFLARED TUNNEL
+4.1 Masuk Cloudflare Tunnel
+cloudflared tunnel login
+
+4.2 Buat tunnel
+cloudflared tunnel create minio-tunnel
+
+4.3 Edit routing tunnel
+
+~/.cloudflared/config.yml
+
+tunnel: minio-tunnel
+credentials-file: /root/.cloudflared/minio-tunnel.json
+
+ingress:
+  - hostname: minio.ngelab-unix.biz.id
+    service: https://localhost:9001
+
+  - hostname: s3.ngelab-unix.biz.id
+    service: https://localhost:9000
+
+  - service: http_status:404
+
+
+⚠ Perhatikan:
+Karena kita memakai NGINX SSL, maka service Cloudflared sebaiknya HTTP → HTTPS local.
+Jika NGINX Anda SSL terminator, ganti ke:
+
+  - hostname: minio.ngelab-unix.biz.id
+    service: http://localhost:443
+
+  - hostname: s3.ngelab-unix.biz.id
+    service: http://localhost:443
+
+
+Jika Anda mau saya cek lengkap, kirim config Anda.
+
+🔍 5. CHECK LIST AGAR S3 BISA DARI LUAR
+Fungsi	Domain	Port Asli	Status
+Web Console	minio.ngelab-unix.biz.id	9001	✔ Sudah jalan
+S3 API	s3.ngelab-unix.biz.id	9000	❌ belum → yang harus diperbaiki
+mc CLI (linux)	—	9000	✔ jalan
+local PC	—	9000	✔ jalan
+
+🔥 Artinya:
+NGINX atau Cloudflared untuk port 9000 belum benar.
+
+🔧 6. TEST DARI LUAR (S3 API)
+Test 1
+curl -I https://s3.ngelab-unix.biz.id
+
+
+Hasil harus 200 MinIO.
+
+Test 2
+
+Ducks3 / S3 Browser pakai:
+
+S3 Endpoint: https://s3.ngelab-unix.biz.id
+Access Key: xxxxxxx
+Secret Key: xxxxxxx
+Region: us-east-1
+
+🎯 Kirimkan hal berikut biar saya perbaiki langsung:
+
+cat /etc/nginx/conf.d/s3-api.conf
+
+cat ~/.cloudflared/config.yml
+
+Output curl -I https://s3.ngelab-unix.biz.id
+
+Nanti saya perbaiki config Anda sampai benar-benar bisa remote S3.
 
